@@ -223,6 +223,20 @@ image-cycle 运动合同”仍缺少透明消融矩阵。</p>
 </table>
 <div class="note">数据合同详见 docs/DATA.md。当前冒烟使用 prepare_demo_data / auto_fake；真实数据根目录未挂载时不得写“已在 ACDC 达到某某 Dice”。</div>
 
+<h3>3.1 本机数据盘点（真实靠谱完整 — 诚实结论）</h3>
+<table>
+<thead><tr><th>路径</th><th>判定</th><th>证据</th></tr></thead>
+<tbody>
+<tr><td><code>data/acdc/</code></td><td><strong>Demo/假数据</strong></td><td>8 例；4D ≈ 0.49&nbsp;MB；形状 (32,32,16,8)；非 CREATIS 挑战集</td></tr>
+<tr><td><code>data/mmwhs/</code></td><td><strong>Demo/假数据</strong></td><td>4 对极小 image/label</td></tr>
+<tr><td><code>data/emidec/</code></td><td><strong>Demo/假数据</strong></td><td>4 对极小 Case</td></tr>
+<tr><td><code>data/ami/</code></td><td>仅示例清单</td><td>无私有 AMI 影像/结局</td></tr>
+<tr><td><code>outputs/ablations_smoke_v2/table.csv</code></td><td><strong>实测冒烟</strong></td><td>可用于 DEMO 表；禁止当临床</td></tr>
+<tr><td>官方 ACDC 下载</td><td><strong>受阻</strong></td><td>需 CREATIS 注册凭证；本机未配置</td></tr>
+</tbody>
+</table>
+<p class="small">因此：公开基准受试者级主表一律标<strong>待补充</strong>；文中凡写 “ACDC smoke” 均指本地假树流水线，不是挑战榜成绩。禁止编造私有 AMI / AUC 0.934。</p>
+
 <h2 id="methods">4. 思路与方法</h2>
 <h3>4.1 张量合同与重建</h3>
 <p>张量布局固定为 <code>(B,C,T,D,H,W)</code>。默认 <code>per_frame_recon=true</code>：逐帧三维编码–解码，
@@ -242,7 +256,8 @@ image-cycle 运动合同”仍缺少透明消融矩阵。</p>
 <li><strong>实现/加固：</strong>Cox 共享有限掩码；运动体积分数化防爆炸；HeartTTable risk_logits 路径；epoch 池化 AUC（见 20260816 审计响应）。</li>
 <li><strong>冒烟消融矩阵：</strong><code>outputs/ablations_smoke_v2</code>（broadcast / PF±motion / concat / HTT-lite / phenotype）；<code>summarize_runs</code> 汇总。</li>
 <li><strong>写作与出图：</strong>nature-writing methods 轴；SciencePlots（Times New Roman + CJK 回退）重绘图1–5；自包含 HTML 研究报告。</li>
-<li><strong>顾问通道：</strong>既往 ChatGPT Plus 审计已采纳要点；本回合浏览器 tab 无法保持 → 独立 Web 检索补文献；公开 GitHub 供顾问 fetch。</li>
+<li><strong>顾问通道：</strong>既往 ChatGPT Plus 审计已采纳要点；五轮成熟化中浏览器 tab 无法保持（0/5 live）→ 独立 Web 检索 + 本地 substitute rounds + 就绪粘贴提示；公开 GitHub 供顾问 fetch。</li>
+<li><strong>文献核对：</strong>Qian ISBI DOI、Gao npj DOI、CSTM→Ye 等 WACV 2025 已独立核实；手稿引用已更新。</li>
 </ol>
 
 <h2 id="results">6. 结果展示与图表解读</h2>
@@ -386,6 +401,16 @@ def build_report_md(rows: list[dict], github_url: str = "") -> str:
         "",
         "数据合同见 `docs/DATA.md`。未挂载真实数据时不得写“已在 ACDC 达到某某 Dice”。",
         "",
+        "### 3.1 本机数据盘点",
+        "",
+        "| 路径 | 判定 | 证据 |",
+        "|---|---|---|",
+        "| `data/acdc/` | **Demo/假** | 8 例；4D≈0.49MB；(32,32,16,8) |",
+        "| `data/mmwhs/` / `emidec/` | **Demo/假** | 各 4 对极小 NIfTI |",
+        "| `data/ami/` | 示例清单 | 无私有 AMI |",
+        "| `outputs/ablations_smoke_v2/table.csv` | **实测冒烟** | DEMO 表可用 |",
+        "| 官方 ACDC | **受阻** | 需 CREATIS 注册 |",
+        "",
         "## 4. 思路与方法",
         "",
         "- 张量 `(B,C,T,D,H,W)`；默认 `per_frame_recon=true`。",
@@ -400,7 +425,8 @@ def build_report_md(rows: list[dict], github_url: str = "") -> str:
         "2. 加固：Cox 掩码、分数体积 volsmooth、risk_logits、epoch 池化 AUC。",
         "3. 冒烟消融 `outputs/ablations_smoke_v2`（6 配置）。",
         "4. nature-writing methods 轴 + SciencePlots 图1–5 + 本报告 bundle。",
-        "5. 顾问：既往 Plus 审计已采纳；本回合浏览器 MCP 无法保持 tab → 独立检索；公开 GitHub 供 fetch。",
+        "5. 顾问：既往 Plus 审计已采纳；五轮成熟化 live ChatGPT **0/5**（MCP tab 消失）→ 独立检索 + `rounds/` substitute + READY_PASTE_PROMPTS。",
+        "6. 文献：Qian DOI、Gao DOI、CSTM=Ye et al. WACV 2025 已核实并写入手稿。",
         "",
         "## 6. 结果展示与图表解读",
         "",
@@ -458,13 +484,14 @@ def build_report_md(rows: list[dict], github_url: str = "") -> str:
         "- 真实 ACDC/MM-WHS/EMIDEC 主表：**待补充**",
         "- 物理毫米 HD95、嵌套 CV、校准曲线：**待补充**",
         "- 紧凑 CNN ≠ 原论文 256³ ViT/nnU-Net",
-        "- 本回合 ChatGPT 实时粘贴受阻（浏览器 MCP tab 无法保持）；非“用户未登录”结论",
+        "- 五轮成熟化 live ChatGPT **0/5**（浏览器 MCP tab 无法保持）；非“用户未登录”结论；就绪粘贴见 `rounds/READY_PASTE_PROMPTS.md`",
         "",
         "## 10. 顾问通道与公开仓库",
         "",
         "- 对话：https://chatgpt.com/c/6a808651-37cc-83ea-a63d-2d2539a48d07",
         f"- 公开 GitHub（代码+文档，无大 data/outputs）：{gh_line}",
-        "- Handoff：`artifacts/chatgpt_handoff/reports/`",
+        "- 五轮记录：`artifacts/chatgpt_handoff/reports/rounds/`",
+        "- 验收：`artifacts/chatgpt_handoff/reports/20260816_five_round_acceptance.md`",
         "",
     ]
     return "\n".join(lines)

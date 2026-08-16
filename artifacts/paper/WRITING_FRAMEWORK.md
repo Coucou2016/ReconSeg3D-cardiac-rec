@@ -97,8 +97,18 @@ All rendered with **SciencePlots** (`science` + `nature` + Times New Roman for L
 ## 6. Advisor consultation status
 
 - **Prior ChatGPT audit** (2026-08-16): accept HeartTTable-lite naming; motion as novelty; defer 3-CLS; real ACDC primary — see `artifacts/chatgpt_handoff/reports/20260816_chatgpt_audit_response.md`.
-- **This turn (2026-08-16 evening):** `cursor-ide-browser` can create tabs but they vanish before navigate (`Browser view not found` / chicken-egg with lock). Live Plus paste **blocked**. Independent web search updated neighbors (CSTM arXiv:2410.23191; CineMesh4D sparse cine→4D). Public GitHub URL (when pushed) is the advisor fetch path — see `artifacts/github_url.txt` and `artifacts/chatgpt_handoff/reports/20260816_chatgpt_github_literature.md`.
-- Prior substitute notes: `artifacts/chatgpt_handoff/reports/20260816_paper_framework_literature.md`.
+- **Five-round maturation (2026-08-16 night):** Live ChatGPT Plus **0/5** (browser MCP tabs vanish before navigate). Five local substitute rounds with honest `ChatGPT live blocked` labels + ready paste prompts under `artifacts/chatgpt_handoff/reports/rounds/`. Independent WebSearch verified Qian DOI, Gao DOI, CSTM→Ye et al. WACV 2025.
+- Public GitHub for advisor fetch: https://github.com/Coucou2016/ReconSeg3D-cardiac-rec
+- Intended chat: https://chatgpt.com/c/6a808651-37cc-83ea-a63d-2d2539a48d07
+
+### On-disk data honesty
+
+| Tree | Verdict |
+|------|---------|
+| `data/acdc` (8 pts, ~0.49 MB 4D, 32×32×16×8) | **Demo/fake** |
+| `data/mmwhs`, `data/emidec` | **Demo/fake** |
+| Official ACDC | CREATIS registration required — download **blocked** without credentials |
+| Smoke CSV / metrics.json | **Measured** demo numbers (OK for DEMO tables) |
 
 ---
 
@@ -107,5 +117,7 @@ All rendered with **SciencePlots** (`science` + `nature` + Times New Roman for L
 - [x] Methods paper architecture
 - [x] Explicit non-claims of 0.934 / full HeartTTable
 - [x] SciencePlots figures from real local smoke logs
-- [ ] Real ACDC subject-level results (blocked: data not on disk)
+- [x] Demo inventory + CREATIS download blocker documented
+- [x] CSTM cited as Ye et al. WACV 2025
+- [ ] Real ACDC subject-level results (blocked: challenge data not licensed/mounted)
 - [ ] Nested CV / calibration (deferred)

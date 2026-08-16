@@ -44,6 +44,16 @@ CSTM arXiv:2410.23191 全序列 4D 分割；CineMesh4D 稀疏 cine→4D mesh）�
 
 数据合同见 `docs/DATA.md`。未挂载真实数据时不得写“已在 ACDC 达到某某 Dice”。
 
+### 3.1 本机数据盘点
+
+| 路径 | 判定 | 证据 |
+|---|---|---|
+| `data/acdc/` | **Demo/假** | 8 例；4D≈0.49MB；(32,32,16,8) |
+| `data/mmwhs/` / `emidec/` | **Demo/假** | 各 4 对极小 NIfTI |
+| `data/ami/` | 示例清单 | 无私有 AMI |
+| `outputs/ablations_smoke_v2/table.csv` | **实测冒烟** | DEMO 表可用 |
+| 官方 ACDC | **受阻** | 需 CREATIS 注册 |
+
 ## 4. 思路与方法
 
 - 张量 `(B,C,T,D,H,W)`；默认 `per_frame_recon=true`。
@@ -58,7 +68,8 @@ CSTM arXiv:2410.23191 全序列 4D 分割；CineMesh4D 稀疏 cine→4D mesh）�
 2. 加固：Cox 掩码、分数体积 volsmooth、risk_logits、epoch 池化 AUC。
 3. 冒烟消融 `outputs/ablations_smoke_v2`（6 配置）。
 4. nature-writing methods 轴 + SciencePlots 图1–5 + 本报告 bundle。
-5. 顾问：既往 Plus 审计已采纳；本回合浏览器 MCP 无法保持 tab → 独立检索；公开 GitHub 供 fetch。
+5. 顾问：既往 Plus 审计已采纳；五轮成熟化 live ChatGPT **0/5**（MCP tab 消失）→ 独立检索 + `rounds/` substitute + READY_PASTE_PROMPTS。
+6. 文献：Qian DOI、Gao DOI、CSTM=Ye et al. WACV 2025 已核实并写入手稿。
 
 ## 6. 结果展示与图表解读
 
@@ -105,10 +116,11 @@ warp + image-cycle 并公开边界。审稿忌：术语偷换、lite=完整 Hear
 - 真实 ACDC/MM-WHS/EMIDEC 主表：**待补充**
 - 物理毫米 HD95、嵌套 CV、校准曲线：**待补充**
 - 紧凑 CNN ≠ 原论文 256³ ViT/nnU-Net
-- 本回合 ChatGPT 实时粘贴受阻（浏览器 MCP tab 无法保持）；非“用户未登录”结论
+- 五轮成熟化 live ChatGPT **0/5**（浏览器 MCP tab 无法保持）；非“用户未登录”结论；就绪粘贴见 `rounds/READY_PASTE_PROMPTS.md`
 
 ## 10. 顾问通道与公开仓库
 
 - 对话：https://chatgpt.com/c/6a808651-37cc-83ea-a63d-2d2539a48d07
 - 公开 GitHub（代码+文档，无大 data/outputs）：https://github.com/Coucou2016/ReconSeg3D-cardiac-rec
-- Handoff：`artifacts/chatgpt_handoff/reports/`
+- 五轮记录：`artifacts/chatgpt_handoff/reports/rounds/`
+- 验收：`artifacts/chatgpt_handoff/reports/20260816_five_round_acceptance.md`

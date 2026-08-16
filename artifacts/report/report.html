@@ -105,6 +105,20 @@ image-cycle 运动合同”仍缺少透明消融矩阵。</p>
 </table>
 <div class="note">数据合同详见 docs/DATA.md。当前冒烟使用 prepare_demo_data / auto_fake；真实数据根目录未挂载时不得写“已在 ACDC 达到某某 Dice”。</div>
 
+<h3>3.1 本机数据盘点（真实靠谱完整 — 诚实结论）</h3>
+<table>
+<thead><tr><th>路径</th><th>判定</th><th>证据</th></tr></thead>
+<tbody>
+<tr><td><code>data/acdc/</code></td><td><strong>Demo/假数据</strong></td><td>8 例；4D ≈ 0.49&nbsp;MB；形状 (32,32,16,8)；非 CREATIS 挑战集</td></tr>
+<tr><td><code>data/mmwhs/</code></td><td><strong>Demo/假数据</strong></td><td>4 对极小 image/label</td></tr>
+<tr><td><code>data/emidec/</code></td><td><strong>Demo/假数据</strong></td><td>4 对极小 Case</td></tr>
+<tr><td><code>data/ami/</code></td><td>仅示例清单</td><td>无私有 AMI 影像/结局</td></tr>
+<tr><td><code>outputs/ablations_smoke_v2/table.csv</code></td><td><strong>实测冒烟</strong></td><td>可用于 DEMO 表；禁止当临床</td></tr>
+<tr><td>官方 ACDC 下载</td><td><strong>受阻</strong></td><td>需 CREATIS 注册凭证；本机未配置</td></tr>
+</tbody>
+</table>
+<p class="small">因此：公开基准受试者级主表一律标<strong>待补充</strong>；文中凡写 “ACDC smoke” 均指本地假树流水线，不是挑战榜成绩。禁止编造私有 AMI / AUC 0.934。</p>
+
 <h2 id="methods">4. 思路与方法</h2>
 <h3>4.1 张量合同与重建</h3>
 <p>张量布局固定为 <code>(B,C,T,D,H,W)</code>。默认 <code>per_frame_recon=true</code>：逐帧三维编码–解码，
@@ -129,7 +143,8 @@ image-cycle 运动合同”仍缺少透明消融矩阵。</p>
 <li><strong>实现/加固：</strong>Cox 共享有限掩码；运动体积分数化防爆炸；HeartTTable risk_logits 路径；epoch 池化 AUC（见 20260816 审计响应）。</li>
 <li><strong>冒烟消融矩阵：</strong><code>outputs/ablations_smoke_v2</code>（broadcast / PF±motion / concat / HTT-lite / phenotype）；<code>summarize_runs</code> 汇总。</li>
 <li><strong>写作与出图：</strong>nature-writing methods 轴；SciencePlots（Times New Roman + CJK 回退）重绘图1–5；自包含 HTML 研究报告。</li>
-<li><strong>顾问通道：</strong>既往 ChatGPT Plus 审计已采纳要点；本回合浏览器 tab 无法保持 → 独立 Web 检索补文献；公开 GitHub 供顾问 fetch。</li>
+<li><strong>顾问通道：</strong>既往 ChatGPT Plus 审计已采纳要点；五轮成熟化中浏览器 tab 无法保持（0/5 live）→ 独立 Web 检索 + 本地 substitute rounds + 就绪粘贴提示；公开 GitHub 供顾问 fetch。</li>
+<li><strong>文献核对：</strong>Qian ISBI DOI、Gao npj DOI、CSTM→Ye 等 WACV 2025 已独立核实；手稿引用已更新。</li>
 </ol>
 
 <h2 id="results">6. 结果展示与图表解读</h2>
