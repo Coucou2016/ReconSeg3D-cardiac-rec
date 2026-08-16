@@ -35,7 +35,8 @@ Workflow change honored: each round brief is a Markdown file on public GitHub (n
 |------|--------|
 | Branch | `main` → `origin/main` |
 | Briefs push | `d5b932b` |
-| Working tree | Paper/report maturation this session |
+| Maturation push | `fe78d09` |
+| Working tree | Clean after push |
 
 ---
 
