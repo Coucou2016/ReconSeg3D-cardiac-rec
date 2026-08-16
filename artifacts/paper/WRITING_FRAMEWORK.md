@@ -97,7 +97,8 @@ All rendered with **SciencePlots** (`science` + `nature` + Times New Roman for L
 ## 6. Advisor consultation status
 
 - **Prior ChatGPT audit** (2026-08-16): accept HeartTTable-lite naming; motion as novelty; defer 3-CLS; real ACDC primary — see `artifacts/chatgpt_handoff/reports/20260816_chatgpt_audit_response.md`.
-- **This turn:** `cursor-ide-browser` MCP **unavailable** in agent environment → live Plus paste consultation **blocked**. Literature framing above uses **independent web verification** + prior advisor decisions. Notes: `artifacts/chatgpt_handoff/reports/20260816_paper_framework_literature.md`.
+- **This turn (2026-08-16 evening):** `cursor-ide-browser` can create tabs but they vanish before navigate (`Browser view not found` / chicken-egg with lock). Live Plus paste **blocked**. Independent web search updated neighbors (CSTM arXiv:2410.23191; CineMesh4D sparse cine→4D). Public GitHub URL (when pushed) is the advisor fetch path — see `artifacts/github_url.txt` and `artifacts/chatgpt_handoff/reports/20260816_chatgpt_github_literature.md`.
+- Prior substitute notes: `artifacts/chatgpt_handoff/reports/20260816_paper_framework_literature.md`.
 
 ---
 
