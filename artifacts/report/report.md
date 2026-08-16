@@ -68,8 +68,12 @@ CSTM arXiv:2410.23191 全序列 4D 分割；CineMesh4D 稀疏 cine→4D mesh）�
 2. 加固：Cox 掩码、分数体积 volsmooth、risk_logits、epoch 池化 AUC。
 3. 冒烟消融 `outputs/ablations_smoke_v2`（6 配置）。
 4. nature-writing methods 轴 + SciencePlots 图1–5 + 本报告 bundle。
-5. 顾问：既往 Plus 审计已采纳；五轮成熟化 live ChatGPT **0/5**（MCP tab 消失）→ 独立检索 + `rounds/` substitute + READY_PASTE_PROMPTS。
-6. 文献：Qian DOI、Gao DOI、CSTM=Ye et al. WACV 2025 已核实并写入手稿。
+5. 顾问：既往 Plus 审计已采纳；2026-08-16 五轮 live ChatGPT **0/5**（MCP tab 消失）。
+6. **2026-08-17 GitHub-MD 五轮：** 全部 brief 已推送至 `artifacts/chatgpt_handoff/github_briefs/`；
+   索引 `ASK_CHATGPT.md`。Cursor IDE browser MCP 仍无法保持 tab（navigate 循环失败）；
+   live 回复计数见 `reports/rounds2/` 与验收文档。独立 WebSearch + nature-skills 已落地论文改写。
+7. 文献：Qian=ISBI 作者核实；Gao DOI；Ye et al. WACV 2025；增补 MedTet/TetHeart（Chen et al.）。
+8. 论文/报告分离：工程路径、冒烟日记语气迁出 `MANUSCRIPT_DRAFT.md`，保留于本报告。
 
 ## 6. 结果展示与图表解读
 
@@ -116,7 +120,8 @@ warp + image-cycle 并公开边界。审稿忌：术语偷换、lite=完整 Hear
 - 真实 ACDC/MM-WHS/EMIDEC 主表：**待补充**
 - 物理毫米 HD95、嵌套 CV、校准曲线：**待补充**
 - 紧凑 CNN ≠ 原论文 256³ ViT/nnU-Net
-- 五轮成熟化 live ChatGPT **0/5**（浏览器 MCP tab 无法保持）；非“用户未登录”结论；就绪粘贴见 `rounds/READY_PASTE_PROMPTS.md`
+- 2026-08-17 live ChatGPT：见验收 `20260817_five_round_github_md_acceptance.md`；
+  brief 索引：`artifacts/chatgpt_handoff/github_briefs/ASK_CHATGPT.md`
 
 ## 10. 顾问通道与公开仓库
 

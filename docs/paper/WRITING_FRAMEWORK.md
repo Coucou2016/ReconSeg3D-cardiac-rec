@@ -97,7 +97,8 @@ All rendered with **SciencePlots** (`science` + `nature` + Times New Roman for L
 ## 6. Advisor consultation status
 
 - **Prior ChatGPT audit** (2026-08-16): accept HeartTTable-lite naming; motion as novelty; defer 3-CLS; real ACDC primary — see `artifacts/chatgpt_handoff/reports/20260816_chatgpt_audit_response.md`.
-- **Five-round maturation (2026-08-16 night):** Live ChatGPT Plus **0/5** (browser MCP tabs vanish before navigate). Five local substitute rounds with honest `ChatGPT live blocked` labels + ready paste prompts under `artifacts/chatgpt_handoff/reports/rounds/`. Independent WebSearch verified Qian DOI, Gao DOI, CSTM→Ye et al. WACV 2025.
+- **Five-round maturation (2026-08-16):** Live ChatGPT Plus **0/5** (browser MCP tabs vanish). Substitute rounds under `reports/rounds/`.
+- **GitHub-MD five rounds (2026-08-17):** Briefs pushed under `artifacts/chatgpt_handoff/github_briefs/` + `ASK_CHATGPT.md`. Workflow: short ChatGPT message → open GitHub blob/raw → structured reply. Browser MCP still fails (`No browser tab available` / vanished viewId). Independent WebSearch + nature-writing/polishing matured the manuscript; round logs in `reports/rounds2/`.
 - Public GitHub for advisor fetch: https://github.com/Coucou2016/ReconSeg3D-cardiac-rec
 - Intended chat: https://chatgpt.com/c/6a808651-37cc-83ea-a63d-2d2539a48d07
 
