@@ -115,10 +115,11 @@ Advisor was pointed at public GitHub every round note: **https://github.com/Couc
 
 ## Git / 发布状态
 
-**Pushed to public GitHub (code/docs only) when push succeeds this session:**  
+**Pushed to public GitHub (code/docs only):**  
 https://github.com/Coucou2016/ReconSeg3D-cardiac-rec  
 
-- Branch: `main`
+- Commit: `842eb62` — Mature methods paper with five-round advisor fallback and honest demo inventory.
+- Branch: `main` tracking `origin/main`
 - Visibility: PUBLIC
 - No third-party PRs; no deploy; no private AMI; no `data/` / `outputs/` dumps
 
@@ -131,3 +132,4 @@ https://github.com/Coucou2016/ReconSeg3D-cardiac-rec
 3. Real public challenge data still **待补充** (CREATIS gate).  
 4. Public repo URL for advisor: https://github.com/Coucou2016/ReconSeg3D-cardiac-rec  
 5. User paste path to complete live rounds: `artifacts/chatgpt_handoff/reports/rounds/READY_PASTE_PROMPTS.md`
+6. **pytest:** 42 passed (~69s).
