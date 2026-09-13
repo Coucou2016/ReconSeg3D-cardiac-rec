@@ -1,4 +1,10 @@
-"""Multi-task losses: recon / seg / MACE / Cox / motion / phenotype."""
+"""Multi-task losses: recon / seg / motion geometry / optional MACE·Cox / phenotype.
+
+Main publication path emphasizes reconstruction, segmentation, and geometry-aware
+motion (inverse consistency, smoothness, Jacobian folding, loop). Image-cycle and
+volume-curve are auxiliary / physiological regularizers. MACE and Cox are optional
+proxy / extensibility heads (``w_mace`` / ``w_cox`` default 0 in publication configs).
+"""
 
 from __future__ import annotations
 
@@ -8,6 +14,10 @@ import torch.nn.functional as F
 
 from reconseg3d.models.motion import (
     cycle_consistency_loss,
+    folding_penalty,
+    inverse_consistency_loss,
+    loop_consistency_loss,
+    smoothness_loss,
     temporal_seg_smoothness,
     volume_curve_loss,
     warp_consistency_loss,
@@ -61,6 +71,41 @@ def seg3d_ce_dice(
     if use_dice:
         loss = loss + dice_loss(logits, targets, num_classes)
     return loss
+
+
+def labeled_phase_seg_loss(
+    seg_sequence: torch.Tensor,
+    segmentation_sequence: torch.Tensor,
+    seg_valid_mask: torch.Tensor,
+    num_classes: int,
+    ce: nn.CrossEntropyLoss,
+    use_dice: bool = True,
+) -> torch.Tensor:
+    """
+    Supervise only labeled cardiac phases.
+
+    Args:
+        seg_sequence: (B, K, T, D, H, W) predicted logits
+        segmentation_sequence: (B, T, D, H, W) GT labels (-1 = unlabeled)
+        seg_valid_mask: (B, T) bool / 0-1 mask of labeled frames
+    """
+    if seg_sequence.ndim != 6:
+        raise ValueError(f"Expected seg_sequence (B,K,T,D,H,W), got {tuple(seg_sequence.shape)}")
+    b, k, t, d, h, w = seg_sequence.shape
+    mask = seg_valid_mask
+    if mask.dtype != torch.bool:
+        mask = mask > 0.5
+    if mask.shape != (b, t):
+        raise ValueError(f"seg_valid_mask must be (B,T)={b,t}, got {tuple(mask.shape)}")
+    if not mask.any():
+        return seg_sequence.sum() * 0.0
+    logits = seg_sequence.permute(0, 2, 1, 3, 4, 5).reshape(b * t, k, d, h, w)
+    targets = segmentation_sequence.reshape(b * t, d, h, w).long()
+    flat_mask = mask.reshape(b * t)
+    logits = logits[flat_mask]
+    targets = targets[flat_mask]
+    # Also honor ignore_index inside labeled frames
+    return seg3d_ce_dice(logits, targets, num_classes, ce, use_dice=use_dice)
 
 
 def seg2d_from_slices(
@@ -133,7 +178,10 @@ def cox_partial_likelihood(
 
 
 class FocalLoss(nn.Module):
-    """Binary focal loss for MACE."""
+    """Binary focal loss for optional MACE proxy head.
+
+    Uses standard α_t weighting: ``α_t = α·y + (1-α)·(1-y)``.
+    """
 
     def __init__(self, alpha: float = 0.25, gamma: float = 2.0) -> None:
         super().__init__()
@@ -143,20 +191,31 @@ class FocalLoss(nn.Module):
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         targets = targets.float()
         bce = F.binary_cross_entropy_with_logits(logits, targets, reduction="none")
-        pt = torch.exp(-bce)
-        focal = self.alpha * (1 - pt) ** self.gamma * bce
+        p = torch.sigmoid(logits)
+        pt = p * targets + (1.0 - p) * (1.0 - targets)
+        alpha_t = self.alpha * targets + (1.0 - self.alpha) * (1.0 - targets)
+        focal = alpha_t * (1.0 - pt).clamp_min(0.0) ** self.gamma * bce
         return focal.mean()
 
 
 class MultiTaskLoss(nn.Module):
-    """Weighted sum of seg + recon + MACE/Cox/phenotype + motion losses."""
+    """Weighted sum of recon / seg / geometry-motion / optional risk heads.
+
+    Motion geometry (preferred for publication):
+        ``w_inv``, ``w_smooth``, ``w_jac``, ``w_loop``
+    Auxiliary:
+        ``w_warp`` (intensity), ``w_cycle`` (image-cycle, not L_inv),
+        ``w_volsmooth`` (physiological volume-curve regularizer — demoted)
+    Optional / supplementary:
+        ``w_mace``, ``w_cox``, ``w_phenotype``
+    """
 
     def __init__(
         self,
         num_seg_classes: int = 5,
         w_seg: float = 1.0,
         w_recon: float = 0.5,
-        w_mace: float = 1.0,
+        w_mace: float = 0.0,
         recon_loss: str = "l1",
         mace_loss: str = "bce",
         use_dice: bool = True,
@@ -167,6 +226,11 @@ class MultiTaskLoss(nn.Module):
         alpha3: float = 0.0,
         w_warp: float = 0.0,
         w_cycle: float = 0.0,
+        w_inv: float = 0.0,
+        w_smooth: float = 0.0,
+        w_jac: float = 0.0,
+        jac_eps: float = 0.0,
+        w_loop: float = 0.0,
         w_volsmooth: float = 0.0,
         w_segsmooth: float = 0.0,
         w_cox: float = 0.0,
@@ -190,6 +254,11 @@ class MultiTaskLoss(nn.Module):
         self.alpha3 = alpha3
         self.w_warp = w_warp
         self.w_cycle = w_cycle
+        self.w_inv = w_inv
+        self.w_smooth = w_smooth
+        self.w_jac = w_jac
+        self.jac_eps = jac_eps
+        self.w_loop = w_loop
         self.w_volsmooth = w_volsmooth
         self.w_segsmooth = w_segsmooth
         self.w_cox = w_cox
@@ -208,6 +277,8 @@ class MultiTaskLoss(nn.Module):
         flow: torch.Tensor | None = None,
         flow_bwd: torch.Tensor | None = None,
         seg_sequence: torch.Tensor | None = None,
+        segmentation_sequence: torch.Tensor | None = None,
+        seg_valid_mask: torch.Tensor | None = None,
         slice_mask: torch.Tensor | None = None,
         time: torch.Tensor | None = None,
         event: torch.Tensor | None = None,
@@ -216,9 +287,27 @@ class MultiTaskLoss(nn.Module):
     ) -> dict[str, torch.Tensor]:
         zero = reconstruction.sum() * 0.0
 
-        seg_ce = self.ce(seg_logits, target_seg.long())
-        seg_dice = dice_loss(seg_logits, target_seg, self.num_seg_classes) if self.use_dice else zero
-        seg_loss = seg_ce + seg_dice
+        # Prefer multi-phase labeled supervision when sequence GT is provided.
+        if (
+            seg_sequence is not None
+            and segmentation_sequence is not None
+            and seg_valid_mask is not None
+            and (self.alpha2 > 0 or self.w_seg > 0)
+        ):
+            seg_loss = labeled_phase_seg_loss(
+                seg_sequence,
+                segmentation_sequence,
+                seg_valid_mask,
+                self.num_seg_classes,
+                self.ce,
+                self.use_dice,
+            )
+            seg_ce = zero
+            seg_dice = zero
+        else:
+            seg_ce = self.ce(seg_logits, target_seg.long())
+            seg_dice = dice_loss(seg_logits, target_seg, self.num_seg_classes) if self.use_dice else zero
+            seg_loss = seg_ce + seg_dice
 
         if self.recon_loss == "l2":
             recon_reg = F.mse_loss(reconstruction, target_volume)
@@ -261,15 +350,40 @@ class MultiTaskLoss(nn.Module):
 
         warp_loss = zero
         cycle_loss = zero
+        inv_loss = zero
+        smooth_flow_loss = zero
+        jac_loss = zero
+        loop_loss = zero
         vol_loss = zero
         smooth_loss = zero
-        if self.w_warp > 0 and flow is not None and reconstruction.shape[2] > 1:
+
+        has_motion = flow is not None and reconstruction.shape[2] > 1
+        if has_motion and self.w_warp > 0:
             warp_loss = warp_consistency_loss(reconstruction, flow, flow_bwd)
             total = total + self.w_warp * warp_loss
-        if self.w_cycle > 0 and flow is not None and flow_bwd is not None and reconstruction.shape[2] > 1:
+        # Image-cycle is auxiliary only (not L_inv).
+        if has_motion and flow_bwd is not None and self.w_cycle > 0:
             cycle_loss = cycle_consistency_loss(reconstruction, flow, flow_bwd)
             total = total + self.w_cycle * cycle_loss
+        if has_motion and flow_bwd is not None and self.w_inv > 0:
+            inv_loss = inverse_consistency_loss(flow, flow_bwd)
+            total = total + self.w_inv * inv_loss
+        if has_motion and self.w_smooth > 0:
+            smooth_flow_loss = smoothness_loss(flow)
+            if flow_bwd is not None:
+                smooth_flow_loss = 0.5 * (smooth_flow_loss + smoothness_loss(flow_bwd))
+            total = total + self.w_smooth * smooth_flow_loss
+        if has_motion and self.w_jac > 0:
+            jac_loss = folding_penalty(flow, eps=self.jac_eps)
+            if flow_bwd is not None:
+                jac_loss = 0.5 * (jac_loss + folding_penalty(flow_bwd, eps=self.jac_eps))
+            total = total + self.w_jac * jac_loss
+        if has_motion and self.w_loop > 0:
+            loop_loss = loop_consistency_loss(flow)
+            total = total + self.w_loop * loop_loss
+
         if seg_sequence is not None:
+            # Physiological volume-curve regularizer (demoted vs geometry terms).
             if self.w_volsmooth > 0:
                 vol_loss = volume_curve_loss(seg_sequence)
                 total = total + self.w_volsmooth * vol_loss
@@ -284,17 +398,24 @@ class MultiTaskLoss(nn.Module):
         elif self.task == "phenotype":
             total = total + pheno_loss
 
+        def _d(t: torch.Tensor) -> torch.Tensor:
+            return t.detach() if torch.is_tensor(t) else zero.detach()
+
         return {
             "total": total,
             "seg": seg_loss.detach(),
             "recon": recon_reg.detach(),
             "recon_mse": recon_mse.detach(),
             "mace": mace_loss.detach(),
-            "seg2d": seg2d_loss.detach() if torch.is_tensor(seg2d_loss) else zero.detach(),
-            "warp": warp_loss.detach() if torch.is_tensor(warp_loss) else zero.detach(),
-            "cycle": cycle_loss.detach() if torch.is_tensor(cycle_loss) else zero.detach(),
-            "volsmooth": vol_loss.detach() if torch.is_tensor(vol_loss) else zero.detach(),
-            "segsmooth": smooth_loss.detach() if torch.is_tensor(smooth_loss) else zero.detach(),
-            "cox": cox_loss.detach() if torch.is_tensor(cox_loss) else zero.detach(),
-            "phenotype": pheno_loss.detach() if torch.is_tensor(pheno_loss) else zero.detach(),
+            "seg2d": _d(seg2d_loss),
+            "warp": _d(warp_loss),
+            "cycle": _d(cycle_loss),
+            "inv": _d(inv_loss),
+            "smooth": _d(smooth_flow_loss),
+            "jac": _d(jac_loss),
+            "loop": _d(loop_loss),
+            "volsmooth": _d(vol_loss),
+            "segsmooth": _d(smooth_loss),
+            "cox": _d(cox_loss),
+            "phenotype": _d(pheno_loss),
         }

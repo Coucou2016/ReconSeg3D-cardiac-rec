@@ -73,6 +73,8 @@ class ReconSeg3D(nn.Module):
         ttable_embed_dim: int = 32,
         ttable_patch_size: int = 4,
         ttable_on_recon: bool = False,
+        use_svf: bool = False,
+        svf_steps: int = 7,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
@@ -85,6 +87,7 @@ class ReconSeg3D(nn.Module):
         self.task = task
         self.num_phenotype_classes = num_phenotype_classes
         self.ttable_on_recon = ttable_on_recon
+        self.use_svf = use_svf
 
         self.encoder = TemporalEncoder(
             in_channels=in_channels,
@@ -101,7 +104,12 @@ class ReconSeg3D(nn.Module):
         )
 
         self.recon_decoder = Decoder3D(feat_ch, out_channels=in_channels)
-        self.motion_net = MotionNet(in_channels=in_channels, base_channels=max(base_channels // 2, 4))
+        self.motion_net = MotionNet(
+            in_channels=in_channels,
+            base_channels=max(base_channels // 2, 4),
+            use_svf=use_svf,
+            svf_steps=svf_steps,
+        )
 
         if fusion == "heart_ttable":
             self.heart_ttable = HeartTTable(
@@ -176,15 +184,44 @@ class ReconSeg3D(nn.Module):
             pooled = torch.cat([pooled, clinical], dim=1)
         return pooled, self.mace_fc(pooled).squeeze(-1)
 
+    @staticmethod
+    def _resolve_seg_ref_indices(
+        batch_size: int,
+        num_frames: int,
+        seg_frame_indices: torch.Tensor | None,
+        device: torch.device,
+    ) -> torch.Tensor:
+        """Per-sample reference frame for the primary seg head (ED when known).
+
+        Does **not** silently use ``t // 2`` when indices are provided. If
+        ``seg_frame_indices`` is None, falls back to frame 0 (ED-first convention)
+        rather than mid-cycle, and logs the fallback via the returned indices.
+        """
+        if seg_frame_indices is None:
+            return torch.zeros(batch_size, dtype=torch.long, device=device)
+        idx = seg_frame_indices
+        if idx.ndim == 0:
+            idx = idx.view(1).expand(batch_size)
+        elif idx.ndim == 2:
+            # (B, K) labeled frame list → take first (typically ED)
+            idx = idx[:, 0]
+        idx = idx.long().to(device)
+        if idx.shape[0] != batch_size:
+            raise ValueError(f"seg_frame_indices batch {idx.shape[0]} != {batch_size}")
+        return idx.clamp(0, max(num_frames - 1, 0))
+
     def forward(
         self,
         x: torch.Tensor,
         clinical: torch.Tensor | None = None,
+        seg_frame_indices: torch.Tensor | None = None,
     ) -> ReconSeg3DOutput:
         """
         Args:
             x: (B, C, T, D, H, W)
             clinical: optional (B, clinical_dim) tabular features
+            seg_frame_indices: optional (B,) or (B, K) labeled phase indices;
+                primary segmentation logits are taken at the first index (ED).
         """
         assert_volume_shape(x, in_channels=self.in_channels)
         b, c, t, d, h, w = x.shape
@@ -204,8 +241,10 @@ class ReconSeg3D(nn.Module):
             reconstruction = self._decode_sequence(seq, spatial)
             if self.per_frame_seg:
                 seg_sequence = self._seg_sequence(seq, spatial)
-                ref = t // 2
-                seg_logits = seg_sequence[:, :, ref]
+                ref_idx = self._resolve_seg_ref_indices(b, t, seg_frame_indices, x.device)
+                # Per-sample reference frame from (B, K, T, D, H, W) → (B, K, D, H, W)
+                batch_ix = torch.arange(b, device=x.device)
+                seg_logits = seg_sequence[batch_ix, :, ref_idx]
             else:
                 seg_logits = self._interp_3d(self.seg_head(features), spatial)
             if self.predict_motion:
@@ -261,4 +300,6 @@ def build_model(cfg: dict[str, Any]):
         ttable_embed_dim=model_cfg.get("ttable_embed_dim", 32),
         ttable_patch_size=model_cfg.get("ttable_patch_size", 4),
         ttable_on_recon=model_cfg.get("ttable_on_recon", False),
+        use_svf=bool(model_cfg.get("use_svf", False)),
+        svf_steps=int(model_cfg.get("svf_steps", 7)),
     )

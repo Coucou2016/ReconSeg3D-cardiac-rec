@@ -43,6 +43,7 @@ def test_compute_metrics_smoke():
     assert "mace_auc" in m
     # Perfect recon should score high on global SSIM proxy (data_range-aware).
     assert m["recon_ssim"] > 0.9
+    assert m["recon_ssim_proxy"] > 0.9
 
 
 def test_pool_ranking_metrics_epoch_level():

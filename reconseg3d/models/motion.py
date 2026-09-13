@@ -1,4 +1,19 @@
-"""Differentiable 3D motion (displacement) and volume warping."""
+"""Differentiable 3D motion (displacement) and volume warping.
+
+Grid convention (shared by image and vector warps)
+-------------------------------------------------
+Displacement channels are ``(dz, dy, dx)`` in voxel units. ``flow_to_grid``
+converts to ``grid_sample`` coordinates ``(x, y, z)`` with ``align_corners=True``
+and scale ``2 / max(dim - 1, 1)``. Positive ``dx`` pulls samples from +x
+(content appears to move toward -x).
+
+Image-cycle vs inverse-consistency
+----------------------------------
+``cycle_consistency_loss`` (image-cycle) is an **auxiliary** intensity residual
+after fwd/bwd warps. True inverse consistency is ``inverse_consistency_loss``:
+``L_inv = ||u + W(v, u)|| + ||v + W(u, v)||`` with the same pull composition
+as VoxelMorph-style registration.
+"""
 
 from __future__ import annotations
 
@@ -44,12 +59,188 @@ def warp_volume(volume: torch.Tensor, flow: torch.Tensor) -> torch.Tensor:
     return F.grid_sample(volume, grid, mode="bilinear", padding_mode="border", align_corners=True)
 
 
+def warp_vector(vec: torch.Tensor, flow: torch.Tensor) -> torch.Tensor:
+    """
+    Warp a vector field with the **same** pull sampling as ``warp_volume``.
+
+    Args:
+        vec: (B, 3, D, H, W) field to be sampled
+        flow: (B, 3, D, H, W) pull displacement (dz, dy, dx)
+    """
+    if vec.shape != flow.shape:
+        raise ValueError(f"vec/flow shape mismatch: {tuple(vec.shape)} vs {tuple(flow.shape)}")
+    return warp_volume(vec, flow)
+
+
+def compose_pull(u: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+    """
+    Compose two pull displacements: ``u ∘ v ≈ v + W(u, v)``.
+
+    Applies ``u`` after ``v`` under the same ``grid_sample`` convention as image warp.
+    """
+    return v + warp_vector(u, v)
+
+
+def inverse_consistency_loss(u: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+    """
+    True inverse-consistency: ``L_inv = ||u + W(v, u)|| + ||v + W(u, v)||``.
+
+    For exact inverses, both residuals vanish. Uses the same warp as images.
+    Accepts either a single pair (B, 3, D, H, W) or a temporal stack
+    (B, 3, T-1, D, H, W).
+    """
+    u_f, v_f = _flatten_flow_pairs(u, v)
+    res_u = u_f + warp_vector(v_f, u_f)
+    res_v = v_f + warp_vector(u_f, v_f)
+    return res_u.abs().mean() + res_v.abs().mean()
+
+
+def _flatten_flow_pairs(
+    flow_a: torch.Tensor, flow_b: torch.Tensor | None = None
+) -> tuple[torch.Tensor, torch.Tensor | None]:
+    """(B,3,D,H,W) or (B,3,T-1,D,H,W) -> flat (N,3,D,H,W)."""
+    if flow_a.ndim == 5:
+        return flow_a, flow_b
+    if flow_a.ndim != 6:
+        raise ValueError(f"Expected 5D or 6D flow, got {tuple(flow_a.shape)}")
+    b, _, t1, d, h, w = flow_a.shape
+    a = flow_a.permute(0, 2, 1, 3, 4, 5).reshape(b * t1, 3, d, h, w)
+    if flow_b is None:
+        return a, None
+    if flow_b.shape != flow_a.shape:
+        raise ValueError(f"flow pair shape mismatch: {tuple(flow_a.shape)} vs {tuple(flow_b.shape)}")
+    bb = flow_b.permute(0, 2, 1, 3, 4, 5).reshape(b * t1, 3, d, h, w)
+    return a, bb
+
+
+def smoothness_loss(flow: torch.Tensor) -> torch.Tensor:
+    """``L_smooth = ||∇u||²`` via finite differences on (dz, dy, dx) channels."""
+    flow_f, _ = _flatten_flow_pairs(flow)
+    dz = flow_f[:, :, 1:, :, :] - flow_f[:, :, :-1, :, :]
+    dy = flow_f[:, :, :, 1:, :] - flow_f[:, :, :, :-1, :]
+    dx = flow_f[:, :, :, :, 1:] - flow_f[:, :, :, :, :-1]
+    return (dz.pow(2).mean() + dy.pow(2).mean() + dx.pow(2).mean()) / 3.0
+
+
+def jacobian_determinant(flow: torch.Tensor) -> torch.Tensor:
+    """
+    Approximate ``det(I + ∇u)`` with central/forward finite differences.
+
+    Returns (N, D-2, H-2, W-2) for interior voxels when D,H,W >= 3; otherwise
+    a reduced interior matching available size.
+    """
+    flow_f, _ = _flatten_flow_pairs(flow)
+    # partials of each component; channels: 0=dz, 1=dy, 2=dx
+    # Use central differences on interior when possible.
+    _, _, d, h, w = flow_f.shape
+    if d < 2 or h < 2 or w < 2:
+        # Degenerate grid: identity Jacobian
+        return torch.ones(flow_f.shape[0], max(d - 2, 1), max(h - 2, 1), max(w - 2, 1), device=flow_f.device, dtype=flow_f.dtype)
+
+    def _grad(field: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        # field (N, D, H, W) -> grads along z,y,x on interior
+        gz = 0.5 * (field[:, 2:, 1:-1, 1:-1] - field[:, :-2, 1:-1, 1:-1])
+        gy = 0.5 * (field[:, 1:-1, 2:, 1:-1] - field[:, 1:-1, :-2, 1:-1])
+        gx = 0.5 * (field[:, 1:-1, 1:-1, 2:] - field[:, 1:-1, 1:-1, :-2])
+        return gz, gy, gx
+
+    uz, uy, ux = flow_f[:, 0], flow_f[:, 1], flow_f[:, 2]
+    duz_dz, duz_dy, duz_dx = _grad(uz)
+    duy_dz, duy_dy, duy_dx = _grad(uy)
+    dux_dz, dux_dy, dux_dx = _grad(ux)
+
+    # J = I + ∇u with rows (z, y, x) matching channel order
+    j00 = 1.0 + duz_dz
+    j01 = duz_dy
+    j02 = duz_dx
+    j10 = duy_dz
+    j11 = 1.0 + duy_dy
+    j12 = duy_dx
+    j20 = dux_dz
+    j21 = dux_dy
+    j22 = 1.0 + dux_dx
+    det = (
+        j00 * (j11 * j22 - j12 * j21)
+        - j01 * (j10 * j22 - j12 * j20)
+        + j02 * (j10 * j21 - j11 * j20)
+    )
+    return det
+
+
+def folding_penalty(flow: torch.Tensor, eps: float = 0.0) -> torch.Tensor:
+    """``ReLU(ε - det J)`` mean; discourages local folding (det J < ε)."""
+    det = jacobian_determinant(flow)
+    return F.relu(eps - det).mean()
+
+
+def jacobian_stats(flow: torch.Tensor, eps: float = 0.0) -> dict[str, float]:
+    """Metric helpers: negative Jacobian ratio and detJ mean/min."""
+    det = jacobian_determinant(flow).detach()
+    if det.numel() == 0:
+        return {"jac_neg_ratio": float("nan"), "jac_det_mean": float("nan"), "jac_det_min": float("nan")}
+    neg = (det < eps).float().mean().item()
+    return {
+        "jac_neg_ratio": float(neg),
+        "jac_det_mean": float(det.mean().item()),
+        "jac_det_min": float(det.min().item()),
+    }
+
+
+def compose_flow_sequence(flows: list[torch.Tensor]) -> torch.Tensor:
+    """Left-fold compose_pull over a list of (B,3,D,H,W) pull fields."""
+    if not flows:
+        raise ValueError("empty flow list")
+    out = flows[0]
+    for f in flows[1:]:
+        out = compose_pull(f, out)
+    return out
+
+
+def loop_consistency_loss(flow_fwd: torch.Tensor) -> torch.Tensor:
+    """
+    Full-cycle composition ≈ identity for adjacent forward fields.
+
+    ``flow_fwd`` is (B, 3, T-1, D, H, W). Composes u_0 ∘ u_1 ∘ … ∘ u_{T-2}
+    and penalizes ``||composed||_1``. For short T this is a coarse periodic
+    surrogate (cardiac cycles typically have denser phase sampling).
+
+    ED-reference path (document in PAPER_PLAN): prefer warping all frames to
+    an ED anchor when ED indices are known; this adjacent+loop term is the
+    minimum implemented regularizer.
+    """
+    if flow_fwd.ndim != 6:
+        raise ValueError(f"Expected (B,3,T-1,D,H,W), got {tuple(flow_fwd.shape)}")
+    b, _, t1, d, h, w = flow_fwd.shape
+    if t1 < 1:
+        return flow_fwd.sum() * 0.0
+    flows = [flow_fwd[:, :, i] for i in range(t1)]
+    composed = compose_flow_sequence(flows)
+    return composed.abs().mean()
+
+
+def scaling_and_squaring(v: torch.Tensor, steps: int = 7) -> torch.Tensor:
+    """
+    Integrate a stationary velocity field (SVF) via scaling-and-squaring.
+
+    Stub for optional SVF path (``model.use_svf``). Not enabled in publication
+    configs by default; see PAPER_PLAN TODO.
+    """
+    if steps < 0:
+        raise ValueError("steps must be >= 0")
+    flow = v / float(2**steps)
+    for _ in range(steps):
+        flow = compose_pull(flow, flow)
+    return flow
+
+
 class MotionNet(nn.Module):
     """Predict 3D displacement between consecutive reconstructed frames."""
 
-    def __init__(self, in_channels: int = 1, base_channels: int = 8) -> None:
+    def __init__(self, in_channels: int = 1, base_channels: int = 8, use_svf: bool = False, svf_steps: int = 7) -> None:
         super().__init__()
         c = max(base_channels, 4)
+        self.use_svf = use_svf
+        self.svf_steps = svf_steps
         self.encoder = nn.Sequential(
             ConvBlock3D(in_channels * 2, c),
             ConvBlock3D(c, c),
@@ -60,7 +251,10 @@ class MotionNet(nn.Module):
 
     def forward_pair(self, src: torch.Tensor, tgt: torch.Tensor) -> torch.Tensor:
         """src/tgt: (B, C, D, H, W) -> flow (B, 3, D, H, W) taking src toward tgt."""
-        return self.flow_head(self.encoder(torch.cat([src, tgt], dim=1)))
+        raw = self.flow_head(self.encoder(torch.cat([src, tgt], dim=1)))
+        if self.use_svf:
+            return scaling_and_squaring(raw, steps=self.svf_steps)
+        return raw
 
     def forward(self, recon: torch.Tensor) -> tuple[torch.Tensor | None, torch.Tensor | None]:
         """
@@ -106,11 +300,11 @@ def warp_consistency_loss(recon: torch.Tensor, flow_fwd: torch.Tensor, flow_bwd:
 
 def cycle_consistency_loss(recon: torch.Tensor, flow_fwd: torch.Tensor, flow_bwd: torch.Tensor) -> torch.Tensor:
     """
-    Image-cycle consistency: ||warp(warp(V_t, u_fwd), u_bwd) - V_t||_1.
+    **Auxiliary** image-cycle consistency: ||warp(warp(V_t, u_fwd), u_bwd) - V_t||_1.
 
-    This is not coordinate-composed inverse-consistent flow regularization; it
-    only enforces that independently predicted fwd/bwd fields reconstruct the
-    intensity after a round-trip warp.
+    This is **not** coordinate-composed inverse-consistent flow regularization;
+    prefer ``inverse_consistency_loss`` for L_inv. Kept as a light intensity
+    auxiliary when ``w_cycle`` > 0.
     """
     _b, _c, t, _d, _h, _w = recon.shape
     if t < 2:
@@ -130,10 +324,11 @@ def cycle_consistency_loss(recon: torch.Tensor, flow_fwd: torch.Tensor, flow_bwd
 
 
 def volume_curve_loss(seg_logits_seq: torch.Tensor, lv_index: int = 1, rv_index: int = 2) -> torch.Tensor:
-    """Soft second difference of LV/RV volume *fractions* over T (needs T >= 3).
+    """
+    Soft second difference of LV/RV volume *fractions* over T (needs T >= 3).
 
-    Counts are divided by D*H*W so the loss is O(1) and does not explode with
-    spatial resolution (raw voxel counts made ``w_volsmooth`` dominate early smoke).
+    **Physiological regularizer only** (demoted relative to inv/smooth/jac/loop).
+    Counts are divided by D*H*W so the loss is O(1).
     """
     if seg_logits_seq.ndim != 6:
         raise ValueError(f"Expected (B,K,T,D,H,W), got {tuple(seg_logits_seq.shape)}")

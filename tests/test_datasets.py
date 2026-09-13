@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import numpy as np
+import torch
 
 from reconseg3d.data.acdc import ACDCDataset, make_fake_acdc
 from reconseg3d.data.emidec import EMIDECDataset, make_fake_emidec
@@ -18,6 +19,9 @@ def test_fake_acdc_loader(tmp_path: Path):
     assert sample["segmentation"].shape == (8, 16, 16)
     assert sample["clinical"].shape == (4,)
     assert int(sample["phenotype"].item()) in range(5)
+    assert "seg_frame_indices" in sample
+    assert sample["segmentation_sequence"].shape[0] == 4
+    assert sample["seg_valid_mask"].dtype == torch.bool
 
 
 def test_fake_mmwhs_loader(tmp_path: Path):

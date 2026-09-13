@@ -1,20 +1,19 @@
-# ReconSeg3D
+# ReconSeg3D-cardiac-rec
 
-**3D spatiotemporal cardiac reconstruction for predicting MACE in acute myocardial infarction**  
-急性心肌梗死 MACE 预测的 3D 时空心脏重建与分割多任务模型。
+**Geometry- and motion-constrained 4D reconstruction/segmentation from sparse SA CMR** (public methods extension).  
+稀疏短轴 CMR 的几何/运动约束 4D 重建与分割方法扩展。
 
-This repository is a **lightweight research codebase**: public reconstruction / segmentation / infarct-phenotype proxies, plus a **motion-consistent 4D** extension. It is **not** a claim of the original paper’s private-AMI 0.934 AUC.
+This repository is a **public methods codebase**. Main line = recon + seg + inverse-consistent motion + function proxies.  
+It is **not** a claim of the original paper’s private-AMI **0.934 AUC**. HeartTTable / Cox / MACE heads are **supplementary**.
 
 ## 项目简介 / Overview
 
-ReconSeg3D jointly learns:
+1. **Per-frame 3D reconstruction** `(B, C, T, D, H, W)` from sparse SA (broadcast ablation retained)
+2. **Geometry-aware motion**: true `L_inv`, smoothness, Jacobian folding, loop consistency; image-cycle and volume-curve are auxiliary / physiological only
+3. **ED/ES-aware segmentation** (ACDC labeled phases; unlabeled frames via motion self-supervision)
+4. **Optional** phenotype / Cox / MACE / HeartTTable-lite (off in `configs/publication_*.yaml`)
 
-1. **Per-frame 3D reconstruction** of cine volumes `(B, C, T, D, H, W)` (default; broadcast ablation still available)
-2. **Motion consistency**: differentiable 3D warp, cycle, optional LV/RV volume-curve regularizer
-3. **Multi-structure segmentation** (LV, RV, myocardium, optional scar)
-4. **Risk / phenotype heads**: BCE MACE, Cox PH, or ACDC phenotype; optional **HeartTTable-lite** fusion
-
-Reference concept: *3D Spatiotemporal cardiac reconstruction for predicting MACE in acute myocardial infarction* (npj Digit Med). See [docs/PAPER_PLAN.md](docs/PAPER_PLAN.md) for what is and is not claimed.
+See [docs/PAPER_PLAN.md](docs/PAPER_PLAN.md) for claim boundaries. Demo metrics are **DEMO-labeled**.
 
 ## 安装 / Install
 

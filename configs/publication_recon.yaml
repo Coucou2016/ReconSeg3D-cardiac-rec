@@ -1,15 +1,17 @@
-# Sparse-SA reconstruction + 3D seg + motion (paper recon setting, compact tensors).
-# Use data.source: acdc or mmwhs with real roots when data is available.
-# Paper-scale comment: 256×256×128 in-plane/through-plane; keep spatial_size small here.
+# Publication main line: sparse-SA recon + 3D seg + geometry-aware motion.
+# MACE / Cox weights are zero (supplementary / extensibility only).
+# allow_fake_data: false — hard error if public roots are missing.
 
 seed: 42
 deterministic: true
 device: auto
-output_dir: outputs/paper_recon
-run_name: paper_recon
+output_dir: outputs/publication_recon
+run_name: publication_recon
 
 data:
-  source: synthetic
+  source: synthetic  # swap to acdc/mmwhs with real root for subject tables
+  allow_fake_data: false
+  auto_fake: false
   in_channels: 1
   num_frames: 8
   spatial_size: [16, 32, 32]  # paper-scale: [128, 256, 256] (D, H, W)
@@ -17,14 +19,12 @@ data:
   num_workers: 0
   train_samples: 16
   val_samples: 8
-  clinical_dim: 4
+  clinical_dim: 0
   slice_sampling: true
-  slice_s_range: [8, 16]  # clipped to D; for D=16 this zeros some slices
+  slice_s_range: [8, 16]
   slice_rot_deg: [1, 5]
   slice_trans_px: [1, 5]
   slice_noise_std: 0.02
-  # Optional public roots (auto_fake creates layouts if missing):
-  # source: acdc | mmwhs ; root: data/acdc ; auto_fake: true
 
 model:
   arch: reconseg3d
@@ -32,13 +32,14 @@ model:
   num_seg_classes: 4
   base_channels: 16
   temporal_mode: temporal_conv
-  clinical_dim: 4
+  clinical_dim: 0
   dropout: 0.2
   per_frame_recon: true
   predict_motion: true
   per_frame_seg: true
   fusion: concat
-  task: mace
+  task: mace  # unused when w_mace=0
+  use_svf: false  # TODO: SVF + scaling-and-squaring (stub in MotionNet)
 
 loss:
   w_seg: 0.0
@@ -48,20 +49,21 @@ loss:
   recon_loss: l2
   mace_loss: bce
   use_dice: true
-  alpha1: 0.1   # recon3d MSE
-  alpha2: 1.0   # seg3d CE+Dice
-  alpha3: 0.2   # seg2d on sampled slices
+  alpha1: 0.1
+  alpha2: 1.0
+  alpha3: 0.2
   w_warp: 0.05
-  w_cycle: 0.02
+  w_cycle: 0.02   # auxiliary image-cycle (not L_inv)
   w_inv: 0.1
   w_smooth: 0.05
   w_jac: 0.05
+  jac_eps: 0.0
   w_loop: 0.05
-  w_volsmooth: 0.01
+  w_volsmooth: 0.01  # demoted physiological regularizer
   w_segsmooth: 0.0
 
 metrics:
-  hd95: false
+  hd95: true
 
 train:
   epochs: 10

@@ -1,5 +1,5 @@
 # Large / generated / private
-data/
+/data/
 outputs/
 predictions/
 .venv/

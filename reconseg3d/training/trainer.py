@@ -27,7 +27,23 @@ from reconseg3d.utils.shapes import validate_batch
 
 logger = logging.getLogger(__name__)
 
-LOSS_KEYS = ("seg", "recon", "recon_mse", "mace", "warp", "cycle", "volsmooth", "segsmooth", "seg2d", "cox", "phenotype")
+LOSS_KEYS = (
+    "seg",
+    "recon",
+    "recon_mse",
+    "mace",
+    "warp",
+    "cycle",
+    "inv",
+    "smooth",
+    "jac",
+    "loop",
+    "volsmooth",
+    "segsmooth",
+    "seg2d",
+    "cox",
+    "phenotype",
+)
 # Ranking metrics must be pooled over the epoch — mean-of-batch-AUC is invalid.
 EPOCH_RANKING_KEYS = ("mace_auc", "mace_sensitivity", "mace_specificity", "mace_accuracy", "c_index", "phenotype_acc", "phenotype_auc")
 
@@ -63,7 +79,7 @@ class Trainer:
             num_seg_classes=model_cfg.get("num_seg_classes", 5),
             w_seg=loss_cfg.get("w_seg", 1.0),
             w_recon=loss_cfg.get("w_recon", 0.5),
-            w_mace=loss_cfg.get("w_mace", 1.0),
+            w_mace=loss_cfg.get("w_mace", 0.0),
             recon_loss=loss_cfg.get("recon_loss", "l1"),
             mace_loss=loss_cfg.get("mace_loss", "bce"),
             use_dice=loss_cfg.get("use_dice", True),
@@ -72,6 +88,11 @@ class Trainer:
             alpha3=loss_cfg.get("alpha3", 0.0),
             w_warp=loss_cfg.get("w_warp", 0.0),
             w_cycle=loss_cfg.get("w_cycle", 0.0),
+            w_inv=loss_cfg.get("w_inv", 0.0),
+            w_smooth=loss_cfg.get("w_smooth", 0.0),
+            w_jac=loss_cfg.get("w_jac", 0.0),
+            jac_eps=float(loss_cfg.get("jac_eps", 0.0)),
+            w_loop=loss_cfg.get("w_loop", 0.0),
             w_volsmooth=loss_cfg.get("w_volsmooth", 0.0),
             w_segsmooth=loss_cfg.get("w_segsmooth", 0.0),
             w_cox=loss_cfg.get("w_cox", 0.0),
@@ -127,6 +148,7 @@ class Trainer:
         mace = batch["mace"].to(self.device)
         clinical = self._clinical(batch)
         target_vol = batch.get("volume_target", batch["volume"]).to(self.device)
+        seg_frame_indices = self._optional(batch, "seg_frame_indices")
 
         if train:
             self.model.train()
@@ -137,7 +159,7 @@ class Trainer:
         ctx = torch.enable_grad() if train else torch.no_grad()
         with ctx:
             with autocast(self.amp_device, enabled=self.use_amp):
-                out = self.model(volume, clinical)
+                out = self.model(volume, clinical, seg_frame_indices=seg_frame_indices)
                 losses = self.criterion(
                     out.reconstruction,
                     out.segmentation,
@@ -148,6 +170,8 @@ class Trainer:
                     flow=out.flow,
                     flow_bwd=out.flow_bwd,
                     seg_sequence=out.seg_sequence,
+                    segmentation_sequence=self._optional(batch, "segmentation_sequence"),
+                    seg_valid_mask=self._optional(batch, "seg_valid_mask"),
                     slice_mask=self._optional(batch, "slice_mask"),
                     time=self._optional(batch, "time"),
                     event=self._optional(batch, "event"),
