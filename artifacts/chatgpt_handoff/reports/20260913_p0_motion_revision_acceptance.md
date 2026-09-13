@@ -50,5 +50,8 @@ Advisor is not ground truth; code + tests are.
 ## GitHub
 
 - Repo: https://github.com/Coucou2016/ReconSeg3D-cardiac-rec
-- Commit hash: *(filled after push)*
+- Commit: [`6e2ed9a`](https://github.com/Coucou2016/ReconSeg3D-cardiac-rec/commit/6e2ed9a) on `main`
+- Brief URLs for ChatGPT paste:
+  - https://github.com/Coucou2016/ReconSeg3D-cardiac-rec/blob/main/artifacts/chatgpt_handoff/github_briefs/20260913_inv_consistency_review.md
+  - https://github.com/Coucou2016/ReconSeg3D-cardiac-rec/blob/main/artifacts/chatgpt_handoff/github_briefs/20260913_ed_es_experiment_matrix.md
 - Critical fix this turn: `.gitignore` `data/` → `/data/` so `reconseg3d/data/` is versioned.
