@@ -14,6 +14,7 @@ import torch.nn.functional as F
 
 from reconseg3d.models.motion import (
     cycle_consistency_loss,
+    ed_reference_consistency_loss,
     folding_penalty,
     inverse_consistency_loss,
     loop_consistency_loss,
@@ -202,7 +203,8 @@ class MultiTaskLoss(nn.Module):
     """Weighted sum of recon / seg / geometry-motion / optional risk heads.
 
     Motion geometry (preferred for publication):
-        ``w_inv``, ``w_smooth``, ``w_jac``, ``w_loop``
+        ``w_inv``, ``w_smooth``, ``w_jac``, ``w_loop`` (adjacent path),
+        ``w_ed_ref`` (ED-anchored composed-path inverse consistency)
     Auxiliary:
         ``w_warp`` (intensity), ``w_cycle`` (image-cycle, not L_inv),
         ``w_volsmooth`` (physiological volume-curve regularizer — demoted)
@@ -231,6 +233,7 @@ class MultiTaskLoss(nn.Module):
         w_jac: float = 0.0,
         jac_eps: float = 0.0,
         w_loop: float = 0.0,
+        w_ed_ref: float = 0.0,
         w_volsmooth: float = 0.0,
         w_segsmooth: float = 0.0,
         w_cox: float = 0.0,
@@ -259,6 +262,7 @@ class MultiTaskLoss(nn.Module):
         self.w_jac = w_jac
         self.jac_eps = jac_eps
         self.w_loop = w_loop
+        self.w_ed_ref = w_ed_ref
         self.w_volsmooth = w_volsmooth
         self.w_segsmooth = w_segsmooth
         self.w_cox = w_cox
@@ -284,6 +288,7 @@ class MultiTaskLoss(nn.Module):
         event: torch.Tensor | None = None,
         phenotype_logits: torch.Tensor | None = None,
         target_phenotype: torch.Tensor | None = None,
+        ed_index: torch.Tensor | int | None = None,
     ) -> dict[str, torch.Tensor]:
         zero = reconstruction.sum() * 0.0
 
@@ -354,6 +359,7 @@ class MultiTaskLoss(nn.Module):
         smooth_flow_loss = zero
         jac_loss = zero
         loop_loss = zero
+        ed_ref_loss = zero
         vol_loss = zero
         smooth_loss = zero
 
@@ -381,6 +387,10 @@ class MultiTaskLoss(nn.Module):
         if has_motion and self.w_loop > 0:
             loop_loss = loop_consistency_loss(flow)
             total = total + self.w_loop * loop_loss
+        # ED-anchored composed-path L_inv (defaults ed_index=0 when absent).
+        if has_motion and self.w_ed_ref > 0:
+            ed_ref_loss = ed_reference_consistency_loss(flow, flow_bwd, ed_index=ed_index)
+            total = total + self.w_ed_ref * ed_ref_loss
 
         if seg_sequence is not None:
             # Physiological volume-curve regularizer (demoted vs geometry terms).
@@ -414,6 +424,7 @@ class MultiTaskLoss(nn.Module):
             "smooth": _d(smooth_flow_loss),
             "jac": _d(jac_loss),
             "loop": _d(loop_loss),
+            "ed_ref": _d(ed_ref_loss),
             "volsmooth": _d(vol_loss),
             "segsmooth": _d(smooth_loss),
             "cox": _d(cox_loss),

@@ -10,6 +10,7 @@ run_name: paper_recon
 
 data:
   source: synthetic
+  allow_fake_data: true
   in_channels: 1
   num_frames: 8
   spatial_size: [16, 32, 32]  # paper-scale: [128, 256, 256] (D, H, W)

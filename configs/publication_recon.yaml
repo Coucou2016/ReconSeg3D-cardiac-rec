@@ -1,6 +1,7 @@
 # Publication main line: sparse-SA recon + 3D seg + geometry-aware motion.
 # MACE / Cox weights are zero (supplementary / extensibility only).
-# allow_fake_data: false — hard error if public roots are missing.
+# allow_fake_data: false — hard error if public roots are missing OR if
+# source is synthetic. For geometry smoke use configs/smoke_motion.yaml.
 
 seed: 42
 deterministic: true
@@ -9,7 +10,8 @@ output_dir: outputs/publication_recon
 run_name: publication_recon
 
 data:
-  source: synthetic  # swap to acdc/mmwhs with real root for subject tables
+  source: acdc  # requires real/proxy ACDC under root; synthetic forbidden here
+  root: data/acdc
   allow_fake_data: false
   auto_fake: false
   in_channels: 1
@@ -17,8 +19,6 @@ data:
   spatial_size: [16, 32, 32]  # paper-scale: [128, 256, 256] (D, H, W)
   batch_size: 2
   num_workers: 0
-  train_samples: 16
-  val_samples: 8
   clinical_dim: 0
   slice_sampling: true
   slice_s_range: [8, 16]
@@ -59,6 +59,7 @@ loss:
   w_jac: 0.05
   jac_eps: 0.0
   w_loop: 0.05
+  w_ed_ref: 0.05  # ED-anchored composed-path inverse consistency
   w_volsmooth: 0.01  # demoted physiological regularizer
   w_segsmooth: 0.0
 

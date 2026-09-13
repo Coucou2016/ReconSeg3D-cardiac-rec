@@ -147,20 +147,20 @@ def build_report_html(rows: list[dict]) -> str:
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ReconSeg3D 运动一致四维心脏重建研究汇报</title>
+<title>ReconSeg3D 几何与运动约束四维心脏重建研究汇报</title>
 <style>{CSS}</style>
 </head>
 <body>
 <section class="cover">
-  <h1>运动一致四维心脏磁共振重建与分割<br/>（ReconSeg3D 方法学扩展）研究汇报</h1>
+  <h1>几何与运动约束的四维心脏磁共振重建与分割<br/>（ReconSeg3D 方法学扩展）研究汇报</h1>
   <p class="meta">工作区：E:\\Projects\\20260523-ReconSeg3D-cardiac-rec</p>
-  <p class="meta">日期：2026-08-16 · 双代理流程（Cursor 主责 / ChatGPT Plus 顾问）</p>
+  <p class="meta">日期：2026-09-14 · P0 gap closure（ED-ref / fake-data gate / ACDC aug）</p>
   <p class="meta">公开代码（供顾问拉取）：见文末 GitHub URL · 版本：冒烟/演示指标 · 不含私有 AMI 临床结论</p>
 </section>
 
 <div class="warn"><strong>声明：</strong>全文定量结果若无特别标注，均来自本地合成/自动假数据冒烟实验，
 <strong>不得</strong>引用为临床性能，亦<strong>不得</strong>声称原论文私有 AMI 五年 MACE AUC = 0.934。
-顾问本回合若无法实时对话，已将公开 GitHub 仓库 URL 写入 handoff，供其自行 fetch 代码与文档。</div>
+发表配置 <code>allow_fake_data: false</code> 禁止静默 synthetic；冒烟请用 <code>configs/smoke_motion.yaml</code>。</div>
 
 <nav class="toc">
 <h2>目录</h2>
@@ -181,9 +181,11 @@ def build_report_html(rows: list[dict]) -> str:
 <h2 id="abstract">1. 摘要</h2>
 <p>本汇报对应一个面向公开数据代理与可复现流水线的 <span class="term">ReconSeg3D</span> 轻量实现。
 <strong>研究问题：</strong>稀疏短轴电影 CMR 如何在公开、可审计设定下建成“时间维可训练”的 4D 重建–分割栈，而不是只报单帧重建或不可复现的私有 MACE 数字。
-<strong>核心创新叙事：</strong>运动一致的四维（4D）重建–分割——逐帧三维解码、可微扭曲、图像循环一致性，以及可选的体积曲线/射血分数代理。
+<strong>核心创新叙事：</strong>几何与运动约束的四维（4D）重建–分割——逐帧三维解码、可微 pull-field 扭曲、
+<strong>真逆一致性</strong> L_inv、光滑与 Jacobian 折叠、相邻 loop、ED 锚定组合路径；
+图像循环一致性仅为强度辅助。
 多模态融合模块以 <span class="term">HeartTTable-lite</span> 形式保留，<strong>仅作融合消融</strong>。
-本地冒烟实验已贯通重建 PSNR/MAE、Dice、warp/cycle 等日志；真实 ACDC/MM-WHS/EMIDEC 受试者级表格仍为<strong>待补充</strong>。</p>
+本地冒烟实验已贯通重建 PSNR/MAE、Dice、几何运动等日志；真实 ACDC/MM-WHS/EMIDEC 受试者级表格仍为<strong>待补充</strong>。</p>
 
 <h2 id="bg">2. 研究背景与目的</h2>
 <h3>2.1 临床与成像背景</h3>
@@ -241,10 +243,11 @@ image-cycle 运动合同”仍缺少透明消融矩阵。</p>
 <h3>4.1 张量合同与重建</h3>
 <p>张量布局固定为 <code>(B,C,T,D,H,W)</code>。默认 <code>per_frame_recon=true</code>：逐帧三维编码–解码，
 避免把单帧重建沿时间广播。稀疏 SA 观测用切片掩码模拟；损失对观测体素加权。</p>
-<h3>4.2 运动一致性（主创新落地）</h3>
+<h3>4.2 几何与运动约束（主创新落地）</h3>
 <p>MotionNet 输出体素位移 <code>(dz,dy,dx)</code>，按网格坐标缩放。可训练项包括：
-<strong>Warp L1</strong>（扭曲源帧对齐目标帧强度）、<strong>Image-cycle</strong>（正/反向扭曲回到原图的强度误差；
-<strong>不是</strong>流场坐标逆一致合成）、可选分数体积曲线平滑与 EF proxy。</p>
+<strong>真逆一致性</strong> L_inv = ||u+W(v,u)|| + ||v+W(u,v)||（与图像 warp 同一 pull 约定）、
+空间光滑、Jacobian 折叠惩罚、相邻 loop、以及 ED 锚定组合路径 <code>w_ed_ref</code>。
+<strong>Image-cycle</strong> 仅为强度往返辅助，<strong>不是</strong>流场坐标逆一致。Warp L1 为强度对齐项。</p>
 <h3>4.3 分割、任务头与融合消融</h3>
 <p>紧凑 3D UNet 风格分割头输出 LV/RV/MYO（可选 scar）。任务头可切换 mace / phenotype / cox。
 融合：<code>concat</code> 或 <code>heart_ttable</code>（lite：单 CLS 对拼接 KV）。HeartTTable-lite <strong>不是</strong>产品主叙事。</p>
@@ -355,7 +358,7 @@ def build_report_md(rows: list[dict], github_url: str = "") -> str:
     acdc = json.loads((ROOT / "outputs" / "paper_acdc_smoke" / "metrics.json").read_text(encoding="utf-8"))
     gh_line = github_url or "（待 push 后回填）"
     lines = [
-        "# 运动一致四维心脏磁共振重建与分割（ReconSeg3D）研究汇报",
+        "# 几何与运动约束的四维心脏磁共振重建与分割（ReconSeg3D）研究汇报",
         "",
         "> **声明：** 冒烟/演示指标；不得声称私有 AMI AUC 0.934。插图：`artifacts/paper/figures/`（SciencePlots）。",
         "> 自包含 HTML：`artifacts/report/report.html`。公开代码：" + gh_line,
@@ -363,8 +366,9 @@ def build_report_md(rows: list[dict], github_url: str = "") -> str:
         "## 1. 摘要",
         "",
         "本汇报对应面向公开数据代理的轻量 **ReconSeg3D** 实现。研究问题：如何在公开、可审计设定下",
-        "建成“时间维可训练”的 4D 重建–分割栈。**核心创新：** 运动一致四维——逐帧三维解码、可微 warp、",
-        "image-cycle，以及可选体积曲线/EF proxy。**HeartTTable-lite 仅作融合消融。**",
+        "建成几何与运动约束的 4D 重建–分割栈。**核心创新：** 逐帧三维解码、可微 pull-field warp、",
+        "**真逆一致性** L_inv、光滑/jac/loop、ED 锚定路径；image-cycle 仅为强度辅助。",
+        "**HeartTTable-lite 仅作融合消融。**",
         "真实 ACDC/MM-WHS/EMIDEC 受试者级主表仍为**待补充**。",
         "",
         "## 2. 研究背景与目的",

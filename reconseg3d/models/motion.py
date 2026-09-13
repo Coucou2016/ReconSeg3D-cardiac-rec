@@ -13,6 +13,15 @@ Image-cycle vs inverse-consistency
 after fwd/bwd warps. True inverse consistency is ``inverse_consistency_loss``:
 ``L_inv = ||u + W(v, u)|| + ||v + W(u, v)||`` with the same pull composition
 as VoxelMorph-style registration.
+
+Adjacent vs ED-anchored paths
+-----------------------------
+MotionNet predicts **adjacent** fields ``u_t`` (t→t+1) and ``v_t`` (t+1→t).
+Geometry losses ``L_inv`` / ``L_smooth`` / ``L_jac`` / ``L_loop`` act on those
+adjacent pairs. The **ED-anchored** path (``ed_anchored_paths`` /
+``ed_reference_consistency_loss``) left-folds adjacent fields into composed
+displacements ``φ_{k→ED}`` and ``φ_{ED→k}``, then applies the same L_inv on
+those compositions (``w_ed_ref`` in MultiTaskLoss).
 """
 
 from __future__ import annotations
@@ -203,10 +212,6 @@ def loop_consistency_loss(flow_fwd: torch.Tensor) -> torch.Tensor:
     ``flow_fwd`` is (B, 3, T-1, D, H, W). Composes u_0 ∘ u_1 ∘ … ∘ u_{T-2}
     and penalizes ``||composed||_1``. For short T this is a coarse periodic
     surrogate (cardiac cycles typically have denser phase sampling).
-
-    ED-reference path (document in PAPER_PLAN): prefer warping all frames to
-    an ED anchor when ED indices are known; this adjacent+loop term is the
-    minimum implemented regularizer.
     """
     if flow_fwd.ndim != 6:
         raise ValueError(f"Expected (B,3,T-1,D,H,W), got {tuple(flow_fwd.shape)}")
@@ -216,6 +221,137 @@ def loop_consistency_loss(flow_fwd: torch.Tensor) -> torch.Tensor:
     flows = [flow_fwd[:, :, i] for i in range(t1)]
     composed = compose_flow_sequence(flows)
     return composed.abs().mean()
+
+
+def _as_ed_index(ed_index: torch.Tensor | int | None, batch: int, device: torch.device) -> torch.Tensor:
+    """Normalize ED index to shape (B,) long on ``device``."""
+    if ed_index is None:
+        return torch.zeros(batch, dtype=torch.long, device=device)
+    if isinstance(ed_index, int):
+        return torch.full((batch,), int(ed_index), dtype=torch.long, device=device)
+    t = ed_index.reshape(-1).long().to(device)
+    if t.numel() == 1 and batch > 1:
+        return t.expand(batch)
+    if t.numel() != batch:
+        raise ValueError(f"ed_index length {t.numel()} != batch {batch}")
+    return t
+
+
+def compose_flow_between_indices(
+    flow_fwd: torch.Tensor,
+    t_src: int,
+    t_tgt: int,
+    flow_bwd: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """
+    Compose adjacent pull fields from frame ``t_src`` to ``t_tgt``.
+
+    - ``t_tgt > t_src``: left-fold ``flow_fwd[:, :, t_src:t_tgt]``
+    - ``t_tgt < t_src``: left-fold ``flow_bwd`` along the reverse adjacent steps
+      (requires ``flow_bwd``)
+    - ``t_tgt == t_src``: zero field
+    """
+    if flow_fwd.ndim != 6:
+        raise ValueError(f"Expected (B,3,T-1,D,H,W), got {tuple(flow_fwd.shape)}")
+    b, _, t1, d, h, w = flow_fwd.shape
+    if t_tgt == t_src:
+        return torch.zeros(b, 3, d, h, w, device=flow_fwd.device, dtype=flow_fwd.dtype)
+    if t_tgt > t_src:
+        if t_tgt > t1:
+            raise ValueError(f"t_tgt={t_tgt} exceeds available forward steps T-1={t1}")
+        return compose_flow_sequence([flow_fwd[:, :, i] for i in range(t_src, t_tgt)])
+    if flow_bwd is None:
+        raise ValueError("flow_bwd required when composing toward earlier frames")
+    if t_src > t1:
+        raise ValueError(f"t_src={t_src} exceeds available backward steps T-1={t1}")
+    # Adjacent bwd at index i takes frame i+1 toward frame i.
+    return compose_flow_sequence([flow_bwd[:, :, i] for i in range(t_src - 1, t_tgt - 1, -1)])
+
+
+def ed_anchored_paths(
+    flow_fwd: torch.Tensor,
+    ed_index: torch.Tensor | int | None = None,
+    flow_bwd: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Build ED-anchored composed displacements for every frame.
+
+    Composition (document clearly)
+    ------------------------------
+    Adjacent MotionNet predicts ``u_t = flow_fwd[:,:,t]`` (frame t → t+1) and
+    ``v_t = flow_bwd[:,:,t]`` (frame t+1 → t).
+
+    For each frame ``k`` and ED index ``e``:
+
+    - **to-ED** ``φ_{k→e}``: compose adjacent fields along the shorter temporal
+      path from ``k`` to ``e`` (forward folds of ``u`` if ``k < e``; backward
+      folds of ``v`` if ``k > e``; zero if ``k == e``).
+    - **from-ED** ``φ_{e→k}``: the opposite composition.
+
+    Returns
+    -------
+    to_ed, from_ed : each ``(B, 3, T, D, H, W)``
+    """
+    if flow_fwd.ndim != 6:
+        raise ValueError(f"Expected (B,3,T-1,D,H,W), got {tuple(flow_fwd.shape)}")
+    b, _, t1, d, h, w = flow_fwd.shape
+    t = t1 + 1
+    ed = _as_ed_index(ed_index, b, flow_fwd.device)
+    to_ed = torch.zeros(b, 3, t, d, h, w, device=flow_fwd.device, dtype=flow_fwd.dtype)
+    from_ed = torch.zeros_like(to_ed)
+    # Per-batch ED may differ; loop over unique ED values for efficiency.
+    for e_val in ed.unique().tolist():
+        e = int(e_val)
+        if e < 0 or e >= t:
+            raise ValueError(f"ed_index {e} out of range for T={t}")
+        mask = ed == e
+        for k in range(t):
+            phi_to = compose_flow_between_indices(flow_fwd, k, e, flow_bwd=flow_bwd)
+            phi_from = compose_flow_between_indices(flow_fwd, e, k, flow_bwd=flow_bwd)
+            to_ed[mask, :, k] = phi_to[mask]
+            from_ed[mask, :, k] = phi_from[mask]
+    return to_ed, from_ed
+
+
+def ed_reference_consistency_loss(
+    flow_fwd: torch.Tensor,
+    flow_bwd: torch.Tensor | None = None,
+    ed_index: torch.Tensor | int | None = None,
+) -> torch.Tensor:
+    """
+    ED-anchored inverse consistency on composed paths.
+
+    For each frame ``k ≠ e``, penalize
+    ``||φ_{k→e} + W(φ_{e→k}, φ_{k→e})|| + ||φ_{e→k} + W(φ_{k→e}, φ_{e→k})||``
+    using the same pull convention as adjacent ``inverse_consistency_loss``.
+    Frames at ED contribute zero. Requires ``flow_bwd`` when any path goes
+    backward in time relative to ED.
+    """
+    if flow_fwd.ndim != 6:
+        raise ValueError(f"Expected (B,3,T-1,D,H,W), got {tuple(flow_fwd.shape)}")
+    b, _, t1, d, h, w = flow_fwd.shape
+    t = t1 + 1
+    if t < 2:
+        return flow_fwd.sum() * 0.0
+    if flow_bwd is None:
+        # Without bwd we can only regularize frames on one side of a shared ED;
+        # still build paths that only move forward from earlier frames.
+        flow_bwd = torch.zeros_like(flow_fwd)
+    to_ed, from_ed = ed_anchored_paths(flow_fwd, ed_index=ed_index, flow_bwd=flow_bwd)
+    ed = _as_ed_index(ed_index, b, flow_fwd.device)
+    # Stack non-ED frames: (B, 3, T, ...) -> select k != e per batch via mask
+    losses = []
+    for k in range(t):
+        # frames where this k is not the ED index
+        active = ed != k
+        if not bool(active.any()):
+            continue
+        u = to_ed[active, :, k]
+        v = from_ed[active, :, k]
+        losses.append(inverse_consistency_loss(u, v))
+    if not losses:
+        return flow_fwd.sum() * 0.0
+    return sum(losses) / len(losses)
 
 
 def scaling_and_squaring(v: torch.Tensor, steps: int = 7) -> torch.Tensor:

@@ -19,15 +19,20 @@ We **do not claim 0.934 AUC**. That figure is tied to private AMI data and the o
 | `L_smooth` | `‖∇u‖²` |
 | `L_jac` | `ReLU(ε − det J)` folding penalty |
 | `L_loop` | Full-cycle adjacent composition ≈ Id (coarse for short T) |
+| `L_ed_ref` | ED-anchored composed-path inverse consistency (`φ_{k→ED}` vs `φ_{ED→k}`) |
 | Image-cycle `w_cycle` | **Auxiliary** intensity round-trip only |
 | `w_volsmooth` | **Demoted** physiological volume-curve regularizer |
 | MACE / Cox / HeartTTable | **Supplementary / extensibility** (`w_mace:0`, `w_cox:0` in `configs/publication_*.yaml`) |
 
-Configs: `configs/publication_recon.yaml`, `publication_motion.yaml`, `publication_seg.yaml`.
+Configs: `configs/publication_recon.yaml`, `publication_motion.yaml`, `publication_seg.yaml` (all `allow_fake_data: false`; synthetic forbidden). Smoke: `configs/smoke_motion.yaml`.
 
 ### Deformation convention
 
-Displacement channels `(dz, dy, dx)` in voxels → `grid_sample` with `align_corners=True`, scale `2/max(dim-1,1)`. Pull composition: `compose_pull(u,v) = v + W(u,v)`. ED/ES indices from ACDC `Info.cfg` (no silent `t//2`); unlabeled frames use motion self-supervision only.
+Displacement channels `(dz, dy, dx)` in voxels → `grid_sample` with `align_corners=True`, scale `2/max(dim-1,1)`. Pull composition: `compose_pull(u,v) = v + W(u,v)`.
+
+**Adjacent path:** MotionNet predicts per-step `u_t` / `v_t`; apply `L_inv` / smooth / jac / loop.
+
+**ED-anchored path:** left-fold adjacent fields into `φ_{k→ED}` and `φ_{ED→k}` (`ed_anchored_paths`); apply the same inverse-consistency residual (`w_ed_ref`). ED/ES indices from ACDC `Info.cfg` (no silent `t//2`); unlabeled frames use motion self-supervision only.
 
 ## What this codebase can verify publicly
 
@@ -55,7 +60,7 @@ Displacement channels `(dz, dy, dx)` in voxels → `grid_sample` with `align_cor
 - [ ] M&Ms download + multi-site tables
 - [ ] 5-seed CI for paper tables
 - [ ] Enable / ablate SVF (`use_svf: true`) with scaling-and-squaring
-- [ ] ED-reference motion path (warp all frames to ED) beyond adjacent+loop
+- [x] ED-reference motion path (adjacent + ED-anchored `w_ed_ref`) — implemented 2026-09-14
 - [ ] Windowed 3D SSIM if claiming SSIM in main tables
 - [ ] Nested CV / calibration for any future survival claims
 
@@ -65,11 +70,11 @@ Displacement channels `(dz, dy, dx)` in voxels → `grid_sample` with `align_cor
 cd E:\Projects\20260523-ReconSeg3D-cardiac-rec
 $env:PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
 python scripts/prepare_demo_data.py
-python scripts/train.py --config configs/publication_motion.yaml --epochs 1 --output-dir outputs/pub_motion_smoke
+python scripts/train.py --config configs/smoke_motion.yaml --epochs 1 --output-dir outputs/smoke_motion
 python scripts/train.py --config configs/paper_recon.yaml --epochs 1 --output-dir outputs/paper_recon_smoke
 ```
 
-Publication configs with `allow_fake_data: false` **hard-error** if ACDC/MM-WHS/EMIDEC roots are empty.
+Publication configs with `allow_fake_data: false` **hard-error** if `source: synthetic` or if ACDC/MM-WHS/EMIDEC roots are empty. Use `smoke_motion.yaml` for synthetic CI.
 
 ## Honest gaps
 

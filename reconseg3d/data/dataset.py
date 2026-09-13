@@ -284,6 +284,13 @@ def build_dataloader(cfg: dict[str, Any], split: str = "train") -> DataLoader:
     num_seg = model_cfg.get("num_seg_classes", data_cfg.get("num_seg_classes", NUM_SEG_CLASSES))
 
     if source == "synthetic":
+        allow_fake = bool(data_cfg.get("allow_fake_data", data_cfg.get("auto_fake", True)))
+        if not allow_fake:
+            raise RuntimeError(
+                "Publication config forbids fake data (allow_fake_data=false) but "
+                "data.source is 'synthetic'. Use a real public root (acdc/mmwhs/emidec) "
+                "or a smoke config with allow_fake_data: true."
+            )
         n = data_cfg.get("train_samples" if train else "val_samples", 32 if train else 8)
         ds: Dataset = SyntheticCardiacDataset(
             num_samples=n,

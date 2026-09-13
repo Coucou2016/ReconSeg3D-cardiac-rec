@@ -64,7 +64,8 @@ We minimize:
 - **Inverse consistency** \(L_\mathrm{inv}=\|u+W(v,u)\|+\|v+W(u,v)\|\) (primary geometric cycle).
 - **Smoothness** \(L_\mathrm{smooth}=\|\nabla u\|^2\).
 - **Folding penalty** \(L_\mathrm{jac}=\mathrm{ReLU}(\varepsilon-\det J)\) with \(J=I+\nabla u\).
-- **Loop consistency** \(L_\mathrm{loop}\): composition of adjacent forward fields over the available \(T\) ≈ identity (coarse for short \(T\); ED-anchored paths are documented as future work).
+- **Loop consistency** \(L_\mathrm{loop}\): composition of adjacent forward fields over the available \(T\) ≈ identity (coarse for short \(T\)).
+- **ED-anchored path** \(L_\mathrm{ed\_ref}\): compose adjacent fields into \(\phi_{k\to\mathrm{ED}}\) / \(\phi_{\mathrm{ED}\to k}\) and apply the same inverse-consistency residual (`w_ed_ref`).
 - **Auxiliary image-cycle**: intensity residual after fwd/bwd warps (explicitly *not* \(L_\mathrm{inv}\)).
 - **Demoted volume-curve**: second-difference of fractional LV/RV volumes (physiological soft prior).
 

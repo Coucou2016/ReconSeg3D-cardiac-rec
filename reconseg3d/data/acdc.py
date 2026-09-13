@@ -290,12 +290,29 @@ class ACDCDataset(Dataset):
 
         if self.train:
             clin = sample.get("clinical")
-            vol, seg_out, clin = apply_train_transforms(sample["volume"], sample["segmentation"], clin)
+            # Co-transform every labeled phase (ED and ES), not only the ED slot.
+            labeled_idxs = [i for i in range(new_t) if bool(valid[i])]
+            primary_idx = ed_idx
+            extra_idxs = [i for i in labeled_idxs if i != primary_idx]
+            extra_masks = [sample["segmentation_sequence"][i].clone() for i in extra_idxs]
+            if extra_masks:
+                vol, seg_out, clin, extras = apply_train_transforms(
+                    sample["volume"],
+                    sample["segmentation"],
+                    clin,
+                    extra_masks=extra_masks,
+                )
+            else:
+                vol, seg_out, clin = apply_train_transforms(
+                    sample["volume"], sample["segmentation"], clin
+                )
+                extras = []
             sample["volume"] = vol
             sample["segmentation"] = seg_out
-            # Keep sequence ED slot aligned with transformed primary mask.
             sample["segmentation_sequence"] = sample["segmentation_sequence"].clone()
-            sample["segmentation_sequence"][ed_idx] = seg_out
+            sample["segmentation_sequence"][primary_idx] = seg_out
+            for i, m in zip(extra_idxs, extras):
+                sample["segmentation_sequence"][i] = m.long()
             if clin is not None:
                 sample["clinical"] = clin
         else:

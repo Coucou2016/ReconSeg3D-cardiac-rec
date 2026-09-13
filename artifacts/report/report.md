@@ -1,4 +1,4 @@
-# 运动一致四维心脏磁共振重建与分割（ReconSeg3D）研究汇报
+# 几何与运动约束的四维心脏磁共振重建与分割（ReconSeg3D）研究汇报
 
 > **声明：** 冒烟/演示指标；不得声称私有 AMI AUC 0.934。插图：`artifacts/paper/figures/`（SciencePlots）。
 > 自包含 HTML：`artifacts/report/report.html`。公开代码：https://github.com/Coucou2016/ReconSeg3D-cardiac-rec
@@ -6,8 +6,9 @@
 ## 1. 摘要
 
 本汇报对应面向公开数据代理的轻量 **ReconSeg3D** 实现。研究问题：如何在公开、可审计设定下
-建成“时间维可训练”的 4D 重建–分割栈。**核心创新：** 运动一致四维——逐帧三维解码、可微 warp、
-image-cycle，以及可选体积曲线/EF proxy。**HeartTTable-lite 仅作融合消融。**
+建成几何与运动约束的 4D 重建–分割栈。**核心创新：** 逐帧三维解码、可微 pull-field warp、
+**真逆一致性** L_inv、光滑/jac/loop、ED 锚定路径；image-cycle 仅为强度辅助。
+**HeartTTable-lite 仅作融合消融。**
 真实 ACDC/MM-WHS/EMIDEC 受试者级主表仍为**待补充**。
 
 ## 2. 研究背景与目的

@@ -93,6 +93,7 @@ class Trainer:
             w_jac=loss_cfg.get("w_jac", 0.0),
             jac_eps=float(loss_cfg.get("jac_eps", 0.0)),
             w_loop=loss_cfg.get("w_loop", 0.0),
+            w_ed_ref=loss_cfg.get("w_ed_ref", 0.0),
             w_volsmooth=loss_cfg.get("w_volsmooth", 0.0),
             w_segsmooth=loss_cfg.get("w_segsmooth", 0.0),
             w_cox=loss_cfg.get("w_cox", 0.0),
@@ -177,6 +178,7 @@ class Trainer:
                     event=self._optional(batch, "event"),
                     phenotype_logits=out.phenotype_logits,
                     target_phenotype=self._optional(batch, "phenotype"),
+                    ed_index=self._optional(batch, "ed_index"),
                 )
             if train:
                 self.scaler.scale(losses["total"]).backward()
