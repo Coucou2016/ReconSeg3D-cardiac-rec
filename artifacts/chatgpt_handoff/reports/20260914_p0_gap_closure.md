@@ -41,4 +41,5 @@ New/expanded: ED-ref tests in `tests/test_motion.py`; `tests/test_publication_ga
 ## GitHub
 
 - Repo: https://github.com/Coucou2016/ReconSeg3D-cardiac-rec
-- Commit: *(filled after push)*
+- Commit: [`392f538`](https://github.com/Coucou2016/ReconSeg3D-cardiac-rec/commit/392f538) on `main`
+- Acceptance: https://github.com/Coucou2016/ReconSeg3D-cardiac-rec/blob/main/artifacts/chatgpt_handoff/reports/20260914_p0_gap_closure.md
