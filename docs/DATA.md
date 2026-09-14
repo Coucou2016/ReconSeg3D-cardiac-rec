@@ -38,7 +38,42 @@ Paper-scale reconstruction grid is **256×256×128** (H×W×D). This repo stores
 
 ## Sparse SA slice sampling
 
-`reconseg3d.data.slice_sampling.sample_sparse_sa_stack` samples **S ∈ [8, 16]** slices along D (clipped to depth), applies in-plane rotation 1–5° and translation 1–5 px, adds noise, and **zeros unselected slices**. Enable with `data.slice_sampling: true` (see `configs/paper_recon.yaml`).
+`reconseg3d.data.slice_sampling.sample_sparse_sa_stack` samples slices along D,
+applies in-plane rotation 1–5°, and translation either:
+
+- **Physical (preferred):** `slice_trans_mm: [1, 5]` with spacing `(sz,sy,sx)` mm
+  from the NIfTI (or `slice_spacing_dhw` in config), or
+- **Legacy pixels:** `slice_trans_px: [1, 5]` on small smoke grids.
+
+Optional `slice_sampling_ratio` (e.g. `0.5`) sets `S = round(ratio * D)` instead
+of the paper `S ∈ [8, 16]` range. Unselected slices are zeroed. Enable with
+`data.slice_sampling: true`.
+
+## ACDC folds
+
+Diagnosis-stratified 5-fold lists live under `splits/acdc_fold{0-4}.json`
+(NOR/MINF/DCM/HCM/RV). Point a config at a fold:
+
+```yaml
+data:
+  source: acdc
+  root: E:/data/ACDC/training
+  fold: 0
+  splits_dir: splits
+```
+
+Regenerate after mounting real data:
+
+```powershell
+python scripts/make_acdc_folds.py --root E:/data/ACDC/training
+```
+
+## M&Ms (`data.source: mms`)
+
+External multi-site generalization. Download from https://www.ub.edu/mnms/ .
+Publication config `configs/publication/publication_mms.yaml` sets
+`allow_fake_data: false` and **hard-fails** if the root is empty. Subject tables
+remain **待补充** until licensed data are evaluated.
 
 ## ACDC (`data.source: acdc`)
 

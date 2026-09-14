@@ -33,7 +33,7 @@ model:
   predict_motion: true
   per_frame_seg: true
   fusion: concat
-  task: mace
+  task: motion
   use_svf: false
 
 loss:
@@ -59,6 +59,10 @@ loss:
 
 metrics:
   hd95: true
+
+selection:
+  metric: prop_ed2es_dice_mean
+  mode: max
 
 train:
   epochs: 2

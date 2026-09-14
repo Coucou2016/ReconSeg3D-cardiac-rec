@@ -413,8 +413,9 @@ def scaling_and_squaring(v: torch.Tensor, steps: int = 7) -> torch.Tensor:
     """
     Integrate a stationary velocity field (SVF) via scaling-and-squaring.
 
-    Stub for optional SVF path (``model.use_svf``). Not enabled in publication
-    configs by default; see PAPER_PLAN TODO.
+    Enabled when ``MotionNet(use_svf=True)`` / ``model.use_svf: true`` (see
+    ``configs/publication/publication_motion_svf.yaml``). Head outputs a
+    stationary velocity; this converts it to a pull displacement.
     """
     if steps < 0:
         raise ValueError("steps must be >= 0")
@@ -425,13 +426,13 @@ def scaling_and_squaring(v: torch.Tensor, steps: int = 7) -> torch.Tensor:
 
 
 class MotionNet(nn.Module):
-    """Predict 3D displacement between consecutive reconstructed frames."""
+    """Predict 3D displacement (or SVF→displacement) between consecutive frames."""
 
     def __init__(self, in_channels: int = 1, base_channels: int = 8, use_svf: bool = False, svf_steps: int = 7) -> None:
         super().__init__()
         c = max(base_channels, 4)
         self.use_svf = use_svf
-        self.svf_steps = svf_steps
+        self.svf_steps = int(svf_steps)
         self.encoder = nn.Sequential(
             ConvBlock3D(in_channels * 2, c),
             ConvBlock3D(c, c),
@@ -441,7 +442,7 @@ class MotionNet(nn.Module):
         nn.init.zeros_(self.flow_head.bias)
 
     def forward_pair(self, src: torch.Tensor, tgt: torch.Tensor) -> torch.Tensor:
-        """src/tgt: (B, C, D, H, W) -> flow (B, 3, D, H, W) taking src toward tgt."""
+        """src/tgt: (B, C, D, H, W) -> pull displacement (B, 3, D, H, W)."""
         raw = self.flow_head(self.encoder(torch.cat([src, tgt], dim=1)))
         if self.use_svf:
             return scaling_and_squaring(raw, steps=self.svf_steps)

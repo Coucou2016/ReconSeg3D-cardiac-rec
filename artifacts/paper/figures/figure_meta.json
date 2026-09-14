@@ -1,6 +1,6 @@
 {
   "source_csv": "outputs\\ablations_smoke_v2\\table.csv",
-  "disclaimer": "All quantitative panels are smoke/demo metrics; do not cite as clinical performance.",
+  "disclaimer": "All quantitative panels are smoke/demo metrics; prefer ssim_3d / recon_ssim_proxy keys; do not cite as clinical performance.",
   "figures": {
     "fig1": "fig1_pipeline.png",
     "fig2": "fig2_recon_ablation.png",
@@ -23,7 +23,6 @@
     "iou_foreground": 0.02535995382716962,
     "recon_mae": 0.6955792307853699,
     "recon_psnr": 19.027001242233595,
-    "recon_ssim": 4.427475062129815e-06,
     "mace_auc": 0.5,
     "mace_sensitivity": 0.6249999943750001,
     "mace_specificity": 0.0,
@@ -32,7 +31,9 @@
     "ef_proxy": 0.03627409506589174,
     "vol_curve": 3.367517866194248,
     "warp_error": 0.0002938352699857205,
-    "cycle_error": 0.00046422968443948776
+    "cycle_error": 0.00046422968443948776,
+    "recon_ssim_proxy": 4.427475062129815e-06,
+    "ssim_3d": null
   },
   "paper_acdc_smoke": {
     "run_name": "paper_acdc",
@@ -51,7 +52,6 @@
     "hd95_mean": 15.684387141358123,
     "recon_mae": 0.6945934891700745,
     "recon_psnr": 17.389618307590375,
-    "recon_ssim": 1.5963622672643396e-06,
     "mace_auc": 0.0,
     "mace_sensitivity": 0.9999999900000002,
     "mace_specificity": 0.0,
@@ -62,6 +62,8 @@
     "ef_proxy": 0.0,
     "vol_curve": 0.472551167011261,
     "warp_error": 8.574330422561616e-05,
-    "cycle_error": 8.337185136042535e-05
+    "cycle_error": 8.337185136042535e-05,
+    "recon_ssim_proxy": 1.5963622672643396e-06,
+    "ssim_3d": null
   }
 }

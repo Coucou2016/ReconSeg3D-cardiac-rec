@@ -52,6 +52,10 @@ loss:
 metrics:
   hd95: false
 
+selection:
+  metric: mace_auc
+  mode: max
+
 train:
   epochs: 2
   lr: 0.001

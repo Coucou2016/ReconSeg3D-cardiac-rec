@@ -173,10 +173,10 @@ def ssim_global(
     k1: float = 0.01,
     k2: float = 0.03,
 ) -> float:
-    """Global (window-free) SSIM **proxy**. Not a 3D sliding-window SSIM.
+    """Global (window-free) SSIM **proxy**. Prefer ``ssim_3d`` for main tables.
 
-    Do not claim windowed SSIM in paper tables until a windowed implementation
-    is added. Stabilizers scale with ``data_range`` (Wang et al.).
+    Stabilizers scale with ``data_range`` (Wang et al.). Reported as
+    ``recon_ssim_proxy`` only — never aliased as ``recon_ssim``.
     """
     x = pred.float().reshape(-1)
     y = target.float().reshape(-1)
@@ -194,8 +194,139 @@ def ssim_global(
     return float((num / den.clamp_min(1e-12)).item())
 
 
+def _gaussian_kernel_1d(window_size: int, sigma: float, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    coords = torch.arange(window_size, device=device, dtype=dtype) - window_size // 2
+    g = torch.exp(-(coords ** 2) / (2 * sigma * sigma))
+    return g / g.sum().clamp_min(1e-12)
+
+
+def _gaussian_kernel_3d(window_size: int, sigma: float, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    g = _gaussian_kernel_1d(window_size, sigma, device, dtype)
+    kernel = g[:, None, None] * g[None, :, None] * g[None, None, :]
+    kernel = kernel / kernel.sum().clamp_min(1e-12)
+    return kernel.view(1, 1, window_size, window_size, window_size)
+
+
+def ssim_3d(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    data_range: float | None = None,
+    window_size: int = 7,
+    sigma: float = 1.5,
+    k1: float = 0.01,
+    k2: float = 0.03,
+) -> float:
+    """Local / windowed 3D SSIM (Wang-style) averaged over the volume.
+
+    Accepts any tensor with trailing spatial dims ``(..., D, H, W)``; leading
+    dims are flattened into the batch/channel axis for convolution. Falls back
+    to ``ssim_global`` when any spatial dim is smaller than ``window_size``.
+    """
+    x = pred.float()
+    y = target.float()
+    if x.shape != y.shape:
+        raise ValueError(f"ssim_3d shape mismatch: {tuple(x.shape)} vs {tuple(y.shape)}")
+    if x.ndim < 3:
+        raise ValueError(f"ssim_3d expects at least 3D, got {tuple(x.shape)}")
+    spatial = x.shape[-3:]
+    leading = int(np.prod(x.shape[:-3])) if x.ndim > 3 else 1
+    x5 = x.reshape(leading, 1, *spatial)
+    y5 = y.reshape(leading, 1, *spatial)
+    d, h, w = spatial
+    ws = int(window_size)
+    if min(d, h, w) < ws:
+        return ssim_global(pred, target, data_range=data_range, k1=k1, k2=k2)
+    if data_range is None:
+        data_range = float((y5.max() - y5.min()).item()) or 1.0
+    c1 = (k1 * data_range) ** 2
+    c2 = (k2 * data_range) ** 2
+    kernel = _gaussian_kernel_3d(ws, sigma, x5.device, x5.dtype)
+    pad = ws // 2
+
+    def _conv(vol: torch.Tensor) -> torch.Tensor:
+        return F.conv3d(vol, kernel, padding=pad)
+
+    mu_x = _conv(x5)
+    mu_y = _conv(y5)
+    mu_x2 = mu_x * mu_x
+    mu_y2 = mu_y * mu_y
+    mu_xy = mu_x * mu_y
+    sigma_x2 = _conv(x5 * x5) - mu_x2
+    sigma_y2 = _conv(y5 * y5) - mu_y2
+    sigma_xy = _conv(x5 * y5) - mu_xy
+    num = (2 * mu_xy + c1) * (2 * sigma_xy + c2)
+    den = (mu_x2 + mu_y2 + c1) * (sigma_x2 + sigma_y2 + c2)
+    ssim_map = num / den.clamp_min(1e-12)
+    return float(ssim_map.mean().item())
+
+
+def chamber_volume_ml(
+    mask: torch.Tensor,
+    spacing: Sequence[float] | torch.Tensor | None,
+    *,
+    class_index: int = 1,
+) -> torch.Tensor:
+    """Physical chamber volume in mL from a label mask and spacing (sz,sy,sx) mm.
+
+    ``mask``: (B,D,H,W) int labels or bool. Returns (B,) volumes in mL
+    (1 mm³ = 0.001 mL). If spacing is missing, uses unit voxels (still labeled
+    as physical only when spacing is present in callers).
+    """
+    if mask.ndim == 3:
+        mask = mask.unsqueeze(0)
+    if mask.dtype == torch.bool:
+        sel = mask.float()
+    else:
+        sel = (mask.long() == int(class_index)).float()
+    counts = sel.sum(dim=(1, 2, 3))
+    if spacing is None:
+        voxel_ml = 0.001
+        return counts * voxel_ml
+    if torch.is_tensor(spacing):
+        sp = spacing.detach().float().to(counts.device)
+        if sp.ndim == 1:
+            sp = sp.view(1, 3).expand(counts.shape[0], 3)
+        elif sp.ndim == 2:
+            if sp.shape[0] == 1 and counts.shape[0] > 1:
+                sp = sp.expand(counts.shape[0], 3)
+        else:
+            raise ValueError(f"spacing must be (3,) or (B,3), got {tuple(sp.shape)}")
+        voxel_ml = (sp[:, 0] * sp[:, 1] * sp[:, 2]) * 0.001
+    else:
+        sz, sy, sx = (float(x) for x in spacing)
+        voxel_ml = sz * sy * sx * 0.001
+        return counts * voxel_ml
+    return counts * voxel_ml
+
+
+def physical_edv_esv_ef(
+    seg_ed: torch.Tensor,
+    seg_es: torch.Tensor,
+    spacing: Sequence[float] | torch.Tensor | None,
+    *,
+    lv_index: int = 1,
+) -> dict[str, float]:
+    """EDV/ESV (mL) and EF (%) from ED/ES label volumes + physical spacing.
+
+    Primary functional metrics for publication tables. Do not use max/min
+    voxel proxy as the main claim when ED/ES phases and spacing are available.
+    """
+    edv = chamber_volume_ml(seg_ed, spacing, class_index=lv_index)
+    esv = chamber_volume_ml(seg_es, spacing, class_index=lv_index)
+    ef = (edv - esv) / edv.clamp_min(1e-6) * 100.0
+    return {
+        "edv_ml": float(edv.mean().item()),
+        "esv_ml": float(esv.mean().item()),
+        "ef_percent": float(ef.mean().item()),
+    }
+
+
 def ef_proxy_from_seg_sequence(seg_seq: torch.Tensor, lv_index: int = 1) -> float:
-    """EF ≈ (max LV voxels − min LV voxels) / max over T. ``seg_seq`` (B,K,T,D,H,W) logits or (B,T,D,H,W) labels."""
+    """Voxel-count EF **proxy** (max−min)/max over T. Not physical mL/% EF.
+
+    Prefer ``physical_edv_esv_ef`` with ED/ES phases + spacing for tables.
+    ``seg_seq``: (B,K,T,D,H,W) logits or (B,T,D,H,W) labels.
+    """
     if seg_seq.ndim == 6:
         labels = seg_seq.argmax(dim=1)
     else:
@@ -205,6 +336,65 @@ def ef_proxy_from_seg_sequence(seg_seq: torch.Tensor, lv_index: int = 1) -> floa
     esv = counts.min(dim=1).values
     ef = (edv - esv) / edv.clamp_min(1.0)
     return float(ef.mean().item())
+
+
+def aggregate_case_metrics(
+    case_rows: list[dict[str, Any]],
+    *,
+    n_boot: int = 1000,
+    alpha: float = 0.05,
+    seed: int = 0,
+) -> tuple[dict[str, float], dict[str, dict[str, float]]]:
+    """Aggregate per-case metrics → mean/SD + bootstrap 95% CI.
+
+    Returns ``(summary, bootstrap_ci)`` where summary has ``{key}_mean`` /
+    ``{key}_std`` and bootstrap_ci has ``{key}: {mean, lo, hi, n}``.
+    """
+    if not case_rows:
+        return {}, {}
+    keys = sorted(set().union(*(r.keys() for r in case_rows)) - {"case_id", "patient_id"})
+    rng = np.random.default_rng(seed)
+    summary: dict[str, float] = {"n_cases": float(len(case_rows))}
+    boot: dict[str, dict[str, float]] = {}
+    for key in keys:
+        vals = np.asarray(
+            [float(r[key]) for r in case_rows if key in r and isinstance(r[key], (int, float)) and r[key] == r[key]],
+            dtype=np.float64,
+        )
+        if vals.size == 0:
+            continue
+        summary[f"{key}_mean"] = float(vals.mean())
+        summary[f"{key}_std"] = float(vals.std(ddof=1)) if vals.size > 1 else 0.0
+        mean, lo, hi = bootstrap_ci(vals, n_boot=n_boot, alpha=alpha, rng=rng)
+        boot[key] = {"mean": mean, "lo": lo, "hi": hi, "n": float(vals.size)}
+    return summary, boot
+
+
+def weighted_mean_metrics(
+    batch_metrics: list[dict[str, float]],
+    batch_sizes: list[int],
+) -> dict[str, float]:
+    """Sample-weighted mean of per-batch metric dicts (patient-level friendly)."""
+    if not batch_metrics:
+        return {}
+    keys = set().union(*(m.keys() for m in batch_metrics))
+    out: dict[str, float] = {}
+    total_n = float(sum(max(int(n), 0) for n in batch_sizes)) or 1.0
+    for key in keys:
+        acc = 0.0
+        wsum = 0.0
+        for m, n in zip(batch_metrics, batch_sizes):
+            if key not in m:
+                continue
+            v = m[key]
+            if isinstance(v, float) and v == v:
+                w = float(max(int(n), 0))
+                acc += v * w
+                wsum += w
+        if wsum > 0:
+            out[key] = acc / wsum
+    out["_n_samples"] = total_n
+    return out
 
 
 def concordance_index(risk: np.ndarray, time: np.ndarray, event: np.ndarray) -> float:
@@ -459,8 +649,12 @@ def compute_metrics(
         vol = vol.to(device=recon.device, dtype=recon.dtype)
         metrics["recon_mae"] = F.l1_loss(recon, vol, reduction="mean").item()
         metrics["recon_psnr"] = psnr(recon, vol)
-        # Global SSIM proxy — not windowed SSIM. Do not alias as recon_ssim.
+        # Global SSIM proxy only — never alias as recon_ssim.
         metrics["recon_ssim_proxy"] = ssim_global(recon, vol)
+        try:
+            metrics["ssim_3d"] = ssim_3d(recon, vol)
+        except Exception:
+            metrics["ssim_3d"] = float("nan")
 
     if "mace_logits" in outputs and "mace" in batch:
         metrics.update(mace_metrics(outputs["mace_logits"], batch["mace"].to(outputs["mace_logits"].device)))
@@ -487,11 +681,55 @@ def compute_metrics(
 
     seg_seq = outputs.get("seg_sequence")
     if seg_seq is not None:
+        # Labeled proxy only — not physical EF.
         metrics["ef_proxy"] = ef_proxy_from_seg_sequence(seg_seq)
         try:
             metrics["vol_curve"] = float(volume_curve_loss(seg_seq).item())
         except Exception:
             metrics["vol_curve"] = float("nan")
+
+    # Physical EDV/ESV/EF (mL / %) when ED/ES labels + spacing are available.
+    if (
+        "ed_index" in batch
+        and "es_index" in batch
+        and "segmentation_sequence" in batch
+    ):
+        try:
+            seg_seq_gt = batch["segmentation_sequence"]
+            if seg_seq_gt.ndim == 5:
+                bsz = seg_seq_gt.shape[0]
+                ed_t = batch["ed_index"].reshape(-1).long()
+                es_t = batch["es_index"].reshape(-1).long()
+                if ed_t.numel() == 1 and bsz > 1:
+                    ed_t = ed_t.expand(bsz)
+                if es_t.numel() == 1 and bsz > 1:
+                    es_t = es_t.expand(bsz)
+                seg_ed_vol = torch.stack(
+                    [seg_seq_gt[i, int(ed_t[i])] for i in range(bsz)], dim=0
+                )
+                seg_es_vol = torch.stack(
+                    [seg_seq_gt[i, int(es_t[i])] for i in range(bsz)], dim=0
+                )
+                # Prefer model ED/ES predictions when per-frame seg is present.
+                if seg_seq is not None and seg_seq.ndim == 6:
+                    pred_labels = seg_seq.argmax(dim=1)
+                    pred_ed = torch.stack(
+                        [pred_labels[i, int(ed_t[i])] for i in range(bsz)], dim=0
+                    )
+                    pred_es = torch.stack(
+                        [pred_labels[i, int(es_t[i])] for i in range(bsz)], dim=0
+                    )
+                    phys = physical_edv_esv_ef(pred_ed, pred_es, spacing, lv_index=1)
+                else:
+                    phys = physical_edv_esv_ef(seg_ed_vol, seg_es_vol, spacing, lv_index=1)
+                metrics.update(phys)
+                # GT reference volumes (for bias tables when available).
+                gt_phys = physical_edv_esv_ef(seg_ed_vol, seg_es_vol, spacing, lv_index=1)
+                metrics["edv_ml_gt"] = gt_phys["edv_ml"]
+                metrics["esv_ml_gt"] = gt_phys["esv_ml"]
+                metrics["ef_percent_gt"] = gt_phys["ef_percent"]
+        except Exception:
+            metrics["ef_percent"] = float("nan")
 
     flow = outputs.get("flow")
     flow_bwd = outputs.get("flow_bwd")

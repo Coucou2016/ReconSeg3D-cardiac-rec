@@ -1,3 +1,4 @@
+from reconseg3d.models.baselines import CompactVoxelMorph, FlowRegAdapter, build_baseline
 from reconseg3d.models.heart_ttable import HeartTTable
 from reconseg3d.models.losses import MultiTaskLoss, cox_partial_likelihood
 from reconseg3d.models.motion import MotionNet, warp_volume
@@ -13,6 +14,9 @@ __all__ = [
     "HeartTTable",
     "CompactVolumeRecon",
     "VolumeUNet3D",
+    "CompactVoxelMorph",
+    "FlowRegAdapter",
     "cox_partial_likelihood",
     "build_model",
+    "build_baseline",
 ]

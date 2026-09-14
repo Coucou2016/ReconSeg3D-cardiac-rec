@@ -203,7 +203,8 @@ class MultiTaskLoss(nn.Module):
     """Weighted sum of recon / seg / geometry-motion / optional risk heads.
 
     Motion geometry (preferred for publication):
-        ``w_inv``, ``w_smooth``, ``w_jac``, ``w_loop`` (adjacent path),
+        ``w_inv``, ``w_smooth``, ``w_jac``,
+        ``w_loop`` (closed-cycle / ``L_periodic`` — T pairs incl. closing edge),
         ``w_ed_ref`` (ED-anchored composed-path inverse consistency)
     Auxiliary:
         ``w_warp`` (intensity), ``w_cycle`` (image-cycle, not L_inv),

@@ -20,6 +20,7 @@ from reconseg3d.training.metrics import (
     compute_metrics,
     concordance_index,
     mace_metrics,
+    weighted_mean_metrics,
 )
 from reconseg3d.utils.config import resolve_device, save_config_snapshot
 from reconseg3d.utils.seed import set_seed
@@ -266,20 +267,20 @@ class Trainer:
         return out
 
     def _run_loader(self, loader: DataLoader, train: bool) -> dict[str, float]:
-        sums: dict[str, float] = {}
-        n = 0
+        batch_metrics: list[dict[str, float]] = []
+        batch_sizes: list[int] = []
         extras_list: list[dict[str, Any]] = []
         desc = "train" if train else "val"
         for batch in tqdm(loader, desc=desc, leave=False):
             m, extras = self._step(batch, train=train)
-            for k, v in m.items():
-                if k in EPOCH_RANKING_KEYS:
-                    continue  # replaced by pooled epoch metrics below
-                if isinstance(v, float) and v == v:
-                    sums[k] = sums.get(k, 0.0) + v
+            # Sample-weighted aggregation (not naive batch-mean).
+            bsz = int(batch["volume"].shape[0]) if "volume" in batch else 1
+            filtered = {k: v for k, v in m.items() if k not in EPOCH_RANKING_KEYS and isinstance(v, float)}
+            batch_metrics.append(filtered)
+            batch_sizes.append(bsz)
             extras_list.append(extras)
-            n += 1
-        averaged = {k: v / max(n, 1) for k, v in sums.items()}
+        averaged = weighted_mean_metrics(batch_metrics, batch_sizes)
+        averaged.pop("_n_samples", None)
         averaged.update(self._pool_ranking_metrics(extras_list))
         return averaged
 

@@ -1,18 +1,18 @@
-# Publication recon/seg (root shim → configs/publication/)
+# M&Ms external generalization stub.
+# Hard-fails in publication mode without data. Download: https://www.ub.edu/mnms/
+# Tables remain 待补充 until licensed data are evaluated.
 
 seed: 42
 deterministic: true
 device: auto
-output_dir: outputs/publication_seg
-run_name: publication_seg
+output_dir: outputs/mms_generalization
+run_name: mms_generalization
 
 data:
-  source: acdc
-  root: data/acdc
+  source: mms
+  root: data/mms
   allow_fake_data: false
   auto_fake: false
-  fold: 0
-  splits_dir: splits
   in_channels: 1
   num_frames: 8
   spatial_size: [32, 64, 64]
@@ -34,19 +34,16 @@ model:
   per_frame_seg: true
   fusion: concat
   task: segmentation
-  use_svf: false
 
 loss:
   w_seg: 1.0
   w_recon: 0.25
   w_mace: 0.0
   w_cox: 0.0
-  w_phenotype: 0.0
   recon_loss: l1
   use_dice: true
   alpha1: 0.1
   alpha2: 1.0
-  alpha3: 0.0
   w_warp: 0.05
   w_cycle: 0.02
   w_inv: 0.1
@@ -55,7 +52,6 @@ loss:
   w_loop: 0.05
   w_ed_ref: 0.05
   w_volsmooth: 0.01
-  w_segsmooth: 0.0
 
 metrics:
   hd95: true

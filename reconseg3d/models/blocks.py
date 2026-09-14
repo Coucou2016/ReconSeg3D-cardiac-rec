@@ -106,8 +106,31 @@ class ConvLSTMCell3D(nn.Module):
         return h_t, (h_t, c_t)
 
 
+class TemporalAttention(nn.Module):
+    """Lightweight temporal self-attention over spatially pooled frame features."""
+
+    def __init__(self, channels: int, num_heads: int = 4) -> None:
+        super().__init__()
+        heads = max(1, min(int(num_heads), channels))
+        while channels % heads != 0 and heads > 1:
+            heads -= 1
+        self.attn = nn.MultiheadAttention(channels, heads, batch_first=True)
+        self.norm = nn.LayerNorm(channels)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """x: (B, C, T) -> (B, C, T)"""
+        # (B, T, C)
+        tokens = x.permute(0, 2, 1)
+        out, _ = self.attn(tokens, tokens, tokens, need_weights=False)
+        out = self.norm(tokens + out)
+        return out.permute(0, 2, 1)
+
+
 class TemporalEncoder(nn.Module):
-    """Encode per-frame 3D features with temporal module (conv_lstm or temporal_conv)."""
+    """Encode per-frame 3D features with temporal module.
+
+    ``temporal_mode``: ``temporal_conv`` | ``conv_lstm`` | ``temporal_attention``.
+    """
 
     def __init__(
         self,
@@ -128,8 +151,14 @@ class TemporalEncoder(nn.Module):
         elif temporal_mode == "temporal_conv":
             self.temporal = TemporalConv(feat_ch)
             self.out_channels = feat_ch
+        elif temporal_mode == "temporal_attention":
+            self.temporal = TemporalAttention(feat_ch)
+            self.out_channels = feat_ch
         else:
-            raise ValueError(f"Unknown temporal_mode: {temporal_mode}")
+            raise ValueError(
+                f"Unknown temporal_mode: {temporal_mode}. "
+                "Use temporal_conv | conv_lstm | temporal_attention."
+            )
 
     def forward(
         self,
@@ -157,6 +186,14 @@ class TemporalEncoder(nn.Module):
                 outputs.append(h_t)
             seq = torch.stack(outputs, dim=2)
             agg = outputs[-1]
+        elif self.temporal_mode == "temporal_attention":
+            pooled = stacked.mean(dim=(3, 4, 5))  # (B, C, T)
+            mixed = self.temporal(pooled)
+            weights = torch.softmax(mixed, dim=-1)
+            temporal_ctx = (mixed * weights).sum(dim=-1)
+            seq = stacked + temporal_ctx.view(b, fc, 1, 1, 1, 1)
+            spatial = stacked.mean(dim=2)
+            agg = spatial + temporal_ctx.view(b, fc, 1, 1, 1)
         else:
             pooled = stacked.mean(dim=(3, 4, 5))
             mixed = self.temporal(pooled)

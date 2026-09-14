@@ -34,12 +34,12 @@ model:
   predict_motion: true
   per_frame_seg: true
   fusion: concat
-  task: mace
+  task: motion
 
 loss:
   w_seg: 0.0
   w_recon: 0.0
-  w_mace: 0.25
+  w_mace: 0.0
   recon_loss: l2
   mace_loss: bce
   use_dice: true
@@ -48,11 +48,20 @@ loss:
   alpha3: 0.2
   w_warp: 0.1
   w_cycle: 0.1
+  w_inv: 0.1
+  w_smooth: 0.05
+  w_jac: 0.05
+  w_loop: 0.05
+  w_ed_ref: 0.05
   w_volsmooth: 0.05
   w_segsmooth: 0.02
 
 metrics:
   hd95: false
+
+selection:
+  metric: prop_ed2es_dice_mean
+  mode: max
 
 train:
   epochs: 2

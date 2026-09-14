@@ -1,0 +1,21 @@
+{
+  "dataset": "ACDC",
+  "n_folds": 5,
+  "seed": 42,
+  "stratify_by": [
+    "NOR",
+    "MINF",
+    "DCM",
+    "HCM",
+    "RV"
+  ],
+  "n_patients": 8,
+  "files": [
+    "acdc_fold0.json",
+    "acdc_fold1.json",
+    "acdc_fold2.json",
+    "acdc_fold3.json",
+    "acdc_fold4.json"
+  ],
+  "note": "Diagnosis-stratified CV. Real ACDC subject tables remain \u5f85\u8865\u5145 until licensed data are mounted; committed lists may reflect fake CI patients when real data were absent at generation time."
+}

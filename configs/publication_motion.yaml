@@ -1,6 +1,5 @@
-# Publication motion-focused config: emphasize inv / smooth / jac / loop / ed_ref.
-# No MACE or Cox. Fake/synthetic forbidden — mount real ACDC under data.root.
-# For geometry unit smoke with synthetic, use configs/smoke_motion.yaml.
+# Publication motion-focused config.
+# Fake/synthetic forbidden. Physical sparse SA optional via slice_trans_mm.
 
 seed: 42
 deterministic: true
@@ -13,10 +12,12 @@ data:
   root: data/acdc
   allow_fake_data: false
   auto_fake: false
+  fold: 0
+  splits_dir: splits
   in_channels: 1
   num_frames: 8
-  spatial_size: [16, 32, 32]
-  batch_size: 2
+  spatial_size: [32, 64, 64]
+  batch_size: 1
   num_workers: 0
   clinical_dim: 0
   slice_sampling: false
@@ -25,7 +26,7 @@ model:
   arch: reconseg3d
   in_channels: 1
   num_seg_classes: 4
-  base_channels: 16
+  base_channels: 24
   temporal_mode: temporal_conv
   clinical_dim: 0
   dropout: 0.2

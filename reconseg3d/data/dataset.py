@@ -136,8 +136,10 @@ class SyntheticCardiacDataset(Dataset):
             "seg_frame_indices": torch.tensor([ed_idx, es_idx], dtype=torch.long),
             "ed_index": torch.tensor(ed_idx, dtype=torch.long),
             "es_index": torch.tensor(es_idx, dtype=torch.long),
+            "spacing": torch.tensor([10.0, 1.5, 1.5], dtype=torch.float32),  # synthetic mm
             "mace": torch.tensor(mace, dtype=torch.float32),
             "case_id": torch.tensor(idx),
+            "patient_id": f"synth_{idx:04d}",
             "phenotype": torch.tensor(phenotype, dtype=torch.long),
             "minf": torch.tensor(1.0 if phenotype == 1 else 0.0, dtype=torch.float32),
             "time": torch.tensor(time, dtype=torch.float32),
@@ -269,6 +271,21 @@ def _spatial_size(data_cfg: dict[str, Any]) -> tuple[int, int, int]:
     return tuple(data_cfg.get("spatial_size", [16, 32, 32]))  # type: ignore[return-value]
 
 
+def _collate_with_patient_id(batch: list[dict[str, Any]]) -> dict[str, Any]:
+    """Default collate that keeps ``patient_id`` as a list of strings."""
+    from torch.utils.data._utils.collate import default_collate
+
+    ids = [b.get("patient_id") for b in batch]
+    cleaned = []
+    for b in batch:
+        bb = {k: v for k, v in b.items() if k != "patient_id"}
+        cleaned.append(bb)
+    out = default_collate(cleaned)
+    if any(x is not None for x in ids):
+        out["patient_id"] = ids
+    return out
+
+
 def build_dataloader(cfg: dict[str, Any], split: str = "train") -> DataLoader:
     data_cfg = cfg.get("data", {})
     model_cfg = cfg.get("model", {})
@@ -283,12 +300,20 @@ def build_dataloader(cfg: dict[str, Any], split: str = "train") -> DataLoader:
     spatial = _spatial_size(data_cfg)
     num_seg = model_cfg.get("num_seg_classes", data_cfg.get("num_seg_classes", NUM_SEG_CLASSES))
 
+    fold_path = None
+    try:
+        from reconseg3d.data.splits import resolve_fold_path
+
+        fold_path = resolve_fold_path(cfg)
+    except Exception:
+        fold_path = None
+
     if source == "synthetic":
         allow_fake = bool(data_cfg.get("allow_fake_data", data_cfg.get("auto_fake", True)))
         if not allow_fake:
             raise RuntimeError(
                 "Publication config forbids fake data (allow_fake_data=false) but "
-                "data.source is 'synthetic'. Use a real public root (acdc/mmwhs/emidec) "
+                "data.source is 'synthetic'. Use a real public root (acdc/mmwhs/emidec/mms) "
                 "or a smoke config with allow_fake_data: true."
             )
         n = data_cfg.get("train_samples" if train else "val_samples", 32 if train else 8)
@@ -321,6 +346,33 @@ def build_dataloader(cfg: dict[str, Any], split: str = "train") -> DataLoader:
                 logger.warning("No ACDC patients in %s; creating fake layout (auto_fake=true)", root)
                 make_fake_acdc(root, n_patients=int(data_cfg.get("fake_n_patients", 8)), spatial=spatial, n_frames=num_frames)
         ds = ACDCDataset(
+            root=root,
+            num_frames=num_frames,
+            spatial_size=spatial,
+            clinical_dim=clinical_dim,
+            train=train,
+            split=split,
+            slice_sampling=slice_on,
+            slice_kwargs=slice_kwargs,
+            num_seg_classes=num_seg,
+            fold_file=fold_path,
+        )
+    elif source in ("mms", "mnms", "m&ms"):
+        from reconseg3d.data.mms import MMsDataset, MMS_DOCS, discover_mms_patients, make_fake_mms
+
+        root = Path(data_cfg.get("root", "data/mms"))
+        allow_fake = bool(data_cfg.get("allow_fake_data", data_cfg.get("auto_fake", True)))
+        auto_fake = bool(data_cfg.get("auto_fake", True))
+        if not discover_mms_patients(root):
+            if not allow_fake:
+                raise RuntimeError(
+                    f"Publication config forbids fake data (allow_fake_data=false) but "
+                    f"no M&Ms patients found under {root}.\n{MMS_DOCS}"
+                )
+            if auto_fake:
+                logger.warning("No M&Ms patients in %s; creating fake layout (auto_fake=true)", root)
+                make_fake_mms(root, n_patients=int(data_cfg.get("fake_n_patients", 8)), spatial=spatial, n_frames=num_frames)
+        ds = MMsDataset(
             root=root,
             num_frames=num_frames,
             spatial_size=spatial,
@@ -401,4 +453,5 @@ def build_dataloader(cfg: dict[str, Any], split: str = "train") -> DataLoader:
         shuffle=train,
         num_workers=num_workers,
         pin_memory=torch.cuda.is_available(),
+        collate_fn=_collate_with_patient_id,
     )

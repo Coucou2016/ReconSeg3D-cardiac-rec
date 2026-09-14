@@ -167,6 +167,8 @@ class ACDCDataset(Dataset):
         - ``seg_valid_mask``: (T,) bool for labeled frames
         - ``seg_frame_indices``: (2,) [ed_idx, es_idx] in the (possibly subsampled) timeline
         - ``ed_index`` / ``es_index``: scalar 0-based indices
+        - ``patient_id``: string id (collate may keep as list)
+        - ``spacing``: (3,) float32 (sz, sy, sx) mm
     """
 
     def __init__(
@@ -181,6 +183,8 @@ class ACDCDataset(Dataset):
         slice_sampling: bool = False,
         slice_kwargs: dict[str, Any] | None = None,
         num_seg_classes: int = 4,
+        patient_ids: list[str] | None = None,
+        fold_file: str | Path | None = None,
     ) -> None:
         self.root = Path(root)
         patients = discover_acdc_patients(self.root)
@@ -189,9 +193,47 @@ class ACDCDataset(Dataset):
                 f"No ACDC patient* folders in {self.root}. "
                 "Download the ACDC challenge data or call make_fake_acdc(root)."
             )
-        n = len(patients)
-        cut = max(1, min(n - 1, int(round(train_ratio * n)))) if n > 1 else 1
-        self.patients = patients[:cut] if split == "train" else patients[cut:] or patients[-1:]
+        by_name = {p.name: p for p in patients}
+        if fold_file is not None:
+            from reconseg3d.data.splits import load_fold_file
+
+            fold = load_fold_file(fold_file)
+            key = "train" if split == "train" else ("test" if split == "test" else "val")
+            ids = list(fold.get(key, []))
+            if not ids and split == "test":
+                # Fall back to val list if an older fold file lacks test.
+                ids = list(fold.get("val", []))
+            selected = [by_name[i] for i in ids if i in by_name]
+            if not selected:
+                raise FileNotFoundError(
+                    f"Fold file {fold_file} split={split} matched 0 patients under {self.root}"
+                )
+            self.patients = selected
+        elif patient_ids is not None:
+            selected = [by_name[i] for i in patient_ids if i in by_name]
+            if not selected:
+                raise FileNotFoundError(f"patient_ids matched 0 patients under {self.root}")
+            self.patients = selected
+        else:
+            n = len(patients)
+            cut = max(1, min(n - 1, int(round(train_ratio * n)))) if n > 1 else 1
+            if split == "train":
+                self.patients = patients[:cut]
+            elif split == "test":
+                # Held-out tail beyond val when no fold file: last 20% (min 1).
+                n_test = max(1, n - cut)
+                self.patients = patients[cut:] or patients[-1:]
+                # Use second half of held-out as test when enough patients.
+                if n_test >= 2:
+                    mid = cut + n_test // 2
+                    self.patients = patients[mid:] or patients[-1:]
+            else:
+                # val
+                held = patients[cut:] or patients[-1:]
+                if len(held) >= 2:
+                    self.patients = held[: max(1, len(held) // 2)]
+                else:
+                    self.patients = held
         self.num_frames = num_frames
         self.spatial_size = tuple(spatial_size) if spatial_size is not None else None
         self.clinical_dim = clinical_dim
@@ -317,6 +359,7 @@ class ACDCDataset(Dataset):
             "time": torch.tensor(5.0 if phenotype != 1 else 2.0, dtype=torch.float32),
             "event": torch.tensor(1.0 if phenotype == 1 else 0.0, dtype=torch.float32),
             "case_id": torch.tensor(idx),
+            "patient_id": pid,
         }
         if self.clinical_dim > 0:
             sample["clinical"] = clinical
@@ -356,7 +399,10 @@ class ACDCDataset(Dataset):
         if self.slice_sampling:
             from reconseg3d.data.slice_sampling import apply_slice_sampling_4d
 
-            sparse, mask, target = apply_slice_sampling_4d(sample["volume"], **self.slice_kwargs)
+            skw = dict(self.slice_kwargs)
+            if skw.get("trans_mm") is not None and skw.get("spacing_dhw") is None:
+                skw["spacing_dhw"] = spacing_dhw
+            sparse, mask, target = apply_slice_sampling_4d(sample["volume"], **skw)
             sample["volume"] = sparse
             sample["slice_mask"] = mask
             sample["volume_target"] = target

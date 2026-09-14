@@ -98,33 +98,35 @@ data:
 ## 模型架构（简述）
 
 ```
-Input (B,C,T,D,H,W)  [optional sparse SA zeros]
+Input (B,C,T,D,H,W)  [optional sparse SA; mm translation / sampling_ratio]
   → per-frame 3D CNN encoder + temporal mix
+       (temporal_conv | conv_lstm | temporal_attention)
   → per-frame recon decoder → (B, C, T, D, H, W)
-  → MotionNet 3D flow + warp/cycle
+  → MotionNet pull fields (optional SVF + scaling-and-squaring)
+       L_inv / L_smooth / L_jac / L_periodic(closed-cycle) / L_ed_ref
   → seg head → (B, K, D, H, W) and optional (B, K, T, D, H, W)
-  → concat MLP  or  HeartTTable (spatial + temporal + table + CLS cross-attn)
-       └─ MACE / Cox risk  and/or  phenotype
+  → concat MLP  or  HeartTTable-lite (supplementary)
 ```
 
-**Publication (formal):** `configs/publication_recon.yaml`, `publication_motion.yaml`, `publication_seg.yaml`  
-(also under `configs/publication/`). Honest `task:` + `selection.metric`/`mode`. `clinical_dim: 0`.  
-**Smoke:** `configs/smoke_motion.yaml`. **Phenotype proxy:** `configs/proxy/proxy_acdc_phenotype.yaml`  
-(`clinical_dim: 3` = height/weight/nb only). Root `paper_*` YAMLs are demo/proxy shims — **not** formal result tables.
+**Publication (formal):** `configs/publication/` (`publication_recon`, `_motion`, `_motion_svf`, `_seg`, `_mms`, `_recon_hires`).  
+**Smoke / CI:** `configs/smoke/smoke_motion.yaml`. **Proxy:** `configs/proxy/`.  
+**Baselines:** `configs/baselines/` + `docs/BASELINES.md`. Root `paper_*` = DEMO shims — **not** formal tables.
 
-`model.per_frame_recon: true` (default). Broadcast ablation: `per_frame_recon: false`.  
-`model.fusion`: `concat` (ablation) | `heart_ttable`.  
-`model.task`: `reconstruction` | `motion` | `segmentation` | `phenotype` | `cox` | `mace` (last three supplementary).
+`model.task`: `reconstruction` | `motion` | `segmentation` | `joint` | `phenotype` | `cox` | `mace` (last three supplementary).  
+Checkpointing uses `selection.metric` / `mode` (never blind `mace_auc` when `w_mace:0`).
 
-Standalone compact 3D ViT-style recon / UNet seg: `reconseg3d.models.volume_recon.CompactVolumeRecon`, `volume_seg.VolumeUNet3D` (paper-scale 256×256×128 is a config comment, not the smoke default).
+Folds: `splits/acdc_fold{0-4}.json` (diagnosis-stratified). Multi-seed: `scripts/run_multiseed.py`.  
+Eval writes `results/case_metrics.csv`, `summary_metrics.json`, `bootstrap_ci.json`.
+
+Standalone compact recon/seg: `CompactVolumeRecon`, `VolumeUNet3D`. Paper-scale 256×256×128 via hires config + GPU — not smoke default.
 
 ## 复现 / Reproducibility
 
-- 全局种子：`seed` in config（`reconseg3d.utils.seed.set_seed`）
+- 全局种子：`seed` in config / `--seed` on `train.py`; multi-seed harness under `scripts/run_multiseed.py`
 - Windows 建议 `data.num_workers: 0`
-- 小样本验证时 MACE AUC / C-index / phenotype AUC 可能为 `NaN`（单类或无可比 pair），属预期行为
-- Best checkpoint uses `selection.metric` / `mode` (not blindly `mace_auc` when `w_mace:0`)
+- Best checkpoint uses `selection.metric` / `mode`
 - Checkpoints store `cfg`, `run_name`, `best_selection_score` / `best_val_loss`; runs also write `config_snapshot.yaml` + `metrics.json`
+- Patient-level metrics: sample-weighted trainer aggregation; eval bootstrap CIs
 
 ## 限制与假设 / Limitations
 
@@ -135,16 +137,19 @@ Standalone compact 3D ViT-style recon / UNet seg: `reconseg3d.models.volume_reco
 | 骨干 | Compact CNN/UNet+small transformer，不是原论文 3D ViT / nnU-Net 256³ |
 | MACE AUC | **不报告 0.934**；公开验证是重建/分割与 ACDC MINF、EMIDEC scar 代理 |
 | Cox / HeartTTable | 接口已就绪；5 年 MACE 需要私有 AMI 队列 |
-| HD95 / SSIM | HD95 uses batch `spacing` when present; SSIM is **`recon_ssim_proxy` only** (no windowed 3D SSIM) |
-| NIfTI | 需安装 `nibabel`；affine/spacing 随 sample 传递；非 scanner-faithful 配准 |
+| HD95 / SSIM | HD95 uses batch `spacing`; tables prefer **`ssim_3d`**; `recon_ssim_proxy` is global-only (no `recon_ssim` alias) |
+| EF | Primary = physical **EDV/ESV/EF (mL/%)** from spacing + ED/ES; `ef_proxy` is voxel max/min only |
+| NIfTI | 需安装 `nibabel`；affine/spacing 随 sample 传递 |
 | Loop | True closed-cycle `L_periodic` (T pairs incl. `T-1→0`); inv/smooth/jac/ed_ref also on |
+| External data | Licensed ACDC / M&Ms subject tables remain **待补充** until mounted |
 
 ## 目录结构
 
 ```
-reconseg3d/     # 模型、数据、训练、推理
-configs/        # publication/ proxy/ smoke/ + root shims + ablations/
-scripts/        # train / eval / predict / prepare_demo_data / run_ablations / summarize_runs
-tests/          # pytest (P0 leakage / anchors / closed-cycle / batch metrics / selection / spacing)
-docs/           # DATA.md, PAPER_PLAN.md
+reconseg3d/     # 模型、数据、训练、推理、baselines
+configs/        # publication/ smoke/ proxy/ baselines/ ablations/ + root shims
+splits/         # acdc_fold{0-4}.json (diagnosis-stratified)
+scripts/        # train / eval / run_multiseed / make_acdc_folds / ...
+tests/          # pytest
+docs/           # DATA.md, PAPER_PLAN.md, BASELINES.md
 ```

@@ -34,12 +34,12 @@ model:
   predict_motion: true
   per_frame_seg: true
   fusion: concat
-  task: mace
+  task: reconstruction
 
 loss:
   w_seg: 0.0
   w_recon: 0.0
-  w_mace: 0.25
+  w_mace: 0.0
   recon_loss: l2
   mace_loss: bce
   use_dice: true
@@ -53,6 +53,10 @@ loss:
 
 metrics:
   hd95: false
+
+selection:
+  metric: recon_mae
+  mode: min
 
 train:
   epochs: 2

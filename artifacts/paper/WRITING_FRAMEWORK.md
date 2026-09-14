@@ -87,10 +87,11 @@ All rendered with **SciencePlots** (`science` + `nature` + Times New Roman for L
 
 | Table | Content | Status |
 |-------|---------|--------|
-| T1 Recon | PSNR / SSIM-proxy / MAE | Smoke present; real ACDC 待补充 |
-| T2 Seg | Dice / HD95 at ED/ES | Smoke; physical-mm HD95 待补充 |
+| T1 Recon | PSNR / `ssim_3d` / `recon_ssim_proxy` / MAE | API Done; real ACDC 待补充 |
+| T2 Seg | Dice / HD95 at ED/ES | API Done; real physical tables 待补充 |
 | T3 Motion geometry | inv, smooth, jac_neg, loop, ed_ref | Implemented; smoke OK |
-| T4 ED↔ES label prop | Prop Dice / HD95 | API + synthetic tests; real ACDC **待补充** |
+| T3b Function | EDV/ESV/EF mL/% | Physical API Done; real 待补充 |
+| T4 ED↔ES label prop | Prop Dice / HD95 + bootstrap CI | API + synthetic tests; real ACDC **待补充** |
 | T5 Fusion | Concat vs HeartTTable-lite | Ablation only |
 
 ---
@@ -123,4 +124,4 @@ All rendered with **SciencePlots** (`science` + `nature` + Times New Roman for L
 - [x] Demo inventory + CREATIS download blocker documented
 - [ ] Real ACDC subject-level ED↔ES tables (blocked: challenge data not licensed/mounted)
 - [ ] Nested CV / calibration (deferred)
-- [ ] SVF full ablation / VoxelMorph baselines / M&Ms / 5-seed CI (tracked TODOs)
+- [x] SVF path + baseline adapters + M&Ms stub + 5-seed harness + folds (infra Done; licensed-data tables 待补充)

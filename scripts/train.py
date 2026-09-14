@@ -21,6 +21,7 @@ def main() -> None:
     parser.add_argument("--config", type=str, default=str(ROOT / "configs" / "default.yaml"))
     parser.add_argument("--epochs", type=int, default=None)
     parser.add_argument("--output-dir", type=str, default=None)
+    parser.add_argument("--seed", type=int, default=None, help="Override config seed")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -29,6 +30,8 @@ def main() -> None:
         cfg.setdefault("train", {})["epochs"] = args.epochs
     if args.output_dir is not None:
         cfg["output_dir"] = args.output_dir
+    if args.seed is not None:
+        cfg["seed"] = int(args.seed)
 
     trainer = Trainer(cfg)
     history = trainer.fit()

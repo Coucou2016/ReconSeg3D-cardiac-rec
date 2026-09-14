@@ -1,5 +1,4 @@
-# Publication segmentation path (ACDC ED/ES labeled phases).
-# MACE/Cox off. HeartTTable / phenotype remain optional proxy configs elsewhere.
+# Publication recon/seg (root shim → configs/publication/)
 
 seed: 42
 deterministic: true
@@ -12,10 +11,12 @@ data:
   root: data/acdc
   allow_fake_data: false
   auto_fake: false
+  fold: 0
+  splits_dir: splits
   in_channels: 1
   num_frames: 8
-  spatial_size: [16, 32, 32]
-  batch_size: 2
+  spatial_size: [32, 64, 64]
+  batch_size: 1
   num_workers: 0
   clinical_dim: 0
   slice_sampling: false
@@ -24,7 +25,7 @@ model:
   arch: reconseg3d
   in_channels: 1
   num_seg_classes: 4
-  base_channels: 16
+  base_channels: 24
   temporal_mode: temporal_conv
   clinical_dim: 0
   dropout: 0.2

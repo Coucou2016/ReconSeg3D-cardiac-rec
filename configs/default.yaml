@@ -4,6 +4,7 @@ device: auto
 output_dir: outputs
 run_name: default
 
+# Default = joint geometry/recon smoke on synthetic (not MACE selection).
 data:
   source: synthetic
   allow_fake_data: true
@@ -29,7 +30,7 @@ model:
   predict_motion: true
   per_frame_seg: true
   fusion: concat  # ablation; set heart_ttable for WP2 path
-  task: mace  # mace | cox | phenotype
+  task: joint  # reconstruction | motion | segmentation | joint | phenotype | cox | mace
 
 loss:
   w_seg: 1.0
@@ -56,6 +57,10 @@ loss:
 
 metrics:
   hd95: false  # enable for paper tables; skip in smoke (slow on large grids)
+
+selection:
+  metric: loss_total
+  mode: min
 
 train:
   epochs: 2

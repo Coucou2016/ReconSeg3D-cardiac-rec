@@ -41,7 +41,7 @@ Gao et al. (*npj Digital Medicine*, 2026) introduced ReconSeg3D to reconstruct t
 
 **Multimodal survival.** DeepSurv-style Cox models[^6] and HeartTTable[^1] motivate optional risk heads. We expose APIs but keep them off the main publication path.
 
-**Positioning.** Relative to Gao et al.[^1], this draft is a methods extension focused on geometric motion constraints and public-proxy evaluation. We do not claim leaderboard dominance versus VoxelMorph/TransMorph baselines (tracked TODO) or private AMI discrimination.
+**Positioning.** Relative to Gao et al.[^1], this draft is a methods extension focused on geometric motion constraints and public-proxy evaluation. Baseline adapters (compact VoxelMorph-style, FlowReg interface, recon-only) are in-repo; we do not claim leaderboard numbers without completed licensed-data runs, nor private AMI discrimination. Related continuous-time (Neural ODE) and mesh (TetHeart) lines are complementary, not our primary closed-cycle pull-field claim.
 
 ---
 
@@ -69,7 +69,7 @@ We minimize:
 - **Auxiliary image-cycle**: intensity residual after fwd/bwd warps (explicitly *not* \(L_\mathrm{inv}\)).
 - **Demoted volume-curve**: second-difference of fractional LV/RV volumes (physiological soft prior).
 
-Optional stationary velocity fields with scaling-and-squaring are stubbed (`use_svf`) and disabled by default.
+Optional stationary velocity fields with scaling-and-squaring are enabled via `model.use_svf: true` (`configs/publication/publication_motion_svf.yaml`).
 
 ### 3.4 ED/ES segmentation
 
@@ -77,7 +77,7 @@ When ACDC-style `Info.cfg` provides ED/ES indices, batch fields expose `seg_fram
 
 ### 3.5 Evaluation
 
-Reconstruction: PSNR, MAE, **global SSIM proxy** (not windowed SSIM). Segmentation: Dice; HD95 with optional physical spacing \((s_z,s_y,s_x)\) mm. Motion: inverse-consistency residual, negative Jacobian ratio, ED↔ES label-propagation Dice/HD95. Real subject-level propagation tables are marked **待补充** under demo-only data.
+Reconstruction: PSNR, MAE, windowed **`ssim_3d`**, and global **`recon_ssim_proxy`** (never aliased as `recon_ssim`). Segmentation: Dice; HD95 with optional physical spacing \((s_z,s_y,s_x)\) mm. Function: physical **EDV/ESV/EF (mL/%)** from ED/ES + spacing; `ef_proxy` is a voxel max/min label only. Motion: inverse-consistency residual, negative Jacobian ratio, ED↔ES label-propagation Dice/HD95 with patient-level mean/SD + bootstrap CI. Real subject-level tables are marked **待补充** under demo-only data.
 
 ### 3.6 HeartTTable-lite and risk heads (supplementary)
 
@@ -116,7 +116,7 @@ Subject-level licensed tables: **待补充**. Unit tests cover identity/exact-in
 
 Naming image-cycle separately from \(L_\mathrm{inv}\) prevents registration-literate misreading. Demoting volume-curve and zeroing MACE/Cox on the main path keeps the novelty claim aligned with geometry-constrained 4D recovery.
 
-**Limitations.** Compact backbones; simulated sparse SA (not \(k\)-space); short-\(T\) loop is approximate; SVF path stubbed; VoxelMorph/TransMorph/MulViMotion baselines and multi-seed CI deferred; global SSIM proxy only; no private AMI evaluation.
+**Limitations.** Compact backbones; simulated sparse SA (not \(k\)-space); licensed ACDC/M&Ms subject tables **待补充**; full 256³ runs need GPU + data (hires config provided); FlowReg/TransMorph numbers require external installs + licensed data; no private AMI evaluation.
 
 ---
 
