@@ -1,28 +1,30 @@
-# Backward-compatible shim → configs/proxy/proxy_acdc_phenotype.yaml
-# Prefer the proxy path in new scripts. Phenotype is the target, not a clinical feature.
+# Phenotype / clinical proxy on ACDC (NOT a publication main-line config).
+# clinical_dim: 3 = height, weight, nb_frame only — phenotype is the TARGET, not a feature.
+# Point data.root at the official ACDC tree once downloaded.
+# Fake layout for CI: python -c "from reconseg3d.data.acdc import make_fake_acdc; make_fake_acdc('data/acdc')"
 
 seed: 42
 deterministic: true
 device: auto
-output_dir: outputs/paper_acdc
-run_name: paper_acdc
+output_dir: outputs/proxy_acdc_phenotype
+run_name: proxy_acdc_phenotype
 
 data:
   source: acdc
   root: data/acdc
   in_channels: 1
   num_frames: 8
-  spatial_size: [16, 32, 32]
+  spatial_size: [16, 32, 32]  # paper-scale: [128, 256, 256] (D,H,W)
   batch_size: 2
   num_workers: 0
-  clinical_dim: 3  # height/weight/nb only (P0-1: no phenotype leakage)
+  clinical_dim: 3  # height, weight, nb_frame — never Group/phenotype
   slice_sampling: false
   auto_fake: true
 
 model:
   arch: reconseg3d
   in_channels: 1
-  num_seg_classes: 4
+  num_seg_classes: 4  # bg / LV / RV / LVM
   base_channels: 16
   temporal_mode: temporal_conv
   clinical_dim: 3
@@ -32,7 +34,7 @@ model:
   per_frame_seg: true
   fusion: heart_ttable
   task: phenotype
-  num_phenotype_classes: 5
+  num_phenotype_classes: 5  # NOR, MINF, DCM, HCM, RV
   ttable_embed_dim: 32
   ttable_patch_size: 4
   ttable_on_recon: false

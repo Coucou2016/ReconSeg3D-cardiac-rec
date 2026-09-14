@@ -25,13 +25,16 @@ from torch.utils.data import Dataset
 from reconseg3d.data.io import (
     acdc_xyzt_to_ctdhw,
     load_nifti,
-    remap_frame_index,
     resize_ctdhw,
     resize_dhw,
     save_nifti,
-    subsample_time,
+    scale_spacing_dhw,
+    subsample_time_keep_anchors,
     xyz_to_dhw,
 )
+
+# Clinical covariates allowed in publication inputs (never phenotype / Group).
+ACDC_CLINICAL_FEATURES = ("height", "weight", "nb_frame")
 from reconseg3d.data.transforms import apply_train_transforms, normalize_intensity
 
 # ACDC diagnosis groups used as phenotype labels (5-class).
@@ -171,7 +174,7 @@ class ACDCDataset(Dataset):
         root: str | Path,
         num_frames: int | None = 8,
         spatial_size: tuple[int, int, int] | None = (16, 32, 32),
-        clinical_dim: int = 4,
+        clinical_dim: int = 3,
         train: bool = True,
         split: str = "train",
         train_ratio: float = 0.75,
@@ -209,6 +212,16 @@ class ACDCDataset(Dataset):
             raise ValueError(f"Unexpected GT shape {gt.shape}")
         return np.zeros(spatial_fallback, dtype=np.int64)
 
+    @staticmethod
+    def clinical_feature_names(clinical_dim: int) -> tuple[str, ...]:
+        """Names of clinical input channels (never includes phenotype/Group)."""
+        if clinical_dim <= 0:
+            return ()
+        base = ACDC_CLINICAL_FEATURES
+        if clinical_dim <= len(base):
+            return base[:clinical_dim]
+        return base + tuple(f"pad_{i}" for i in range(clinical_dim - len(base)))
+
     def __getitem__(self, idx: int) -> dict[str, torch.Tensor]:
         case = self.patients[idx]
         pid = case.name
@@ -219,12 +232,20 @@ class ACDCDataset(Dataset):
         phenotype = phenotype_from_group(group)
 
         four_d = case / f"{pid}_4d.nii.gz"
+        spacing_dhw = (1.0, 1.0, 1.0)
+        affine = np.eye(4, dtype=np.float64)
         if four_d.exists():
-            raw = load_nifti(four_d).astype(np.float32)
+            meta = load_nifti(four_d, with_meta=True)
+            raw = meta.data.astype(np.float32)
+            spacing_dhw = meta.spacing_dhw
+            affine = meta.affine
             volume = acdc_xyzt_to_ctdhw(raw)
         else:
             frame_path = case / f"{pid}_frame{ed_1:02d}.nii.gz"
-            sl = load_nifti(frame_path).astype(np.float32)
+            meta = load_nifti(frame_path, with_meta=True)
+            sl = meta.data.astype(np.float32)
+            spacing_dhw = meta.spacing_dhw
+            affine = meta.affine
             if sl.ndim == 3:
                 dhw = xyz_to_dhw(sl)
                 volume = dhw[np.newaxis, np.newaxis, ...]
@@ -232,6 +253,8 @@ class ACDCDataset(Dataset):
                 raise ValueError(f"Unexpected ACDC frame shape {sl.shape} in {frame_path}")
 
         orig_t = int(volume.shape[1])
+        ed_orig = ed_1 - 1
+        es_orig = es_1 - 1
         seg_ed = self._load_gt_frame(case, pid, ed_1, volume.shape[-3:])
         seg_es = self._load_gt_frame(case, pid, es_1, volume.shape[-3:])
 
@@ -239,16 +262,23 @@ class ACDCDataset(Dataset):
         seg_ed_t = torch.from_numpy(np.ascontiguousarray(seg_ed))
         seg_es_t = torch.from_numpy(np.ascontiguousarray(seg_es))
 
+        # Anchor-preserving temporal subsample: original ED/ES frames always kept.
+        # Prefer full-T + temporal mask when GPU allows (set num_frames=None / == orig_t).
+        selected = list(range(orig_t))
         if self.num_frames is not None:
-            volume_t = subsample_time(volume_t, self.num_frames)
+            volume_t, selected = subsample_time_keep_anchors(
+                volume_t, self.num_frames, anchors=[ed_orig, es_orig]
+            )
         new_t = int(volume_t.shape[1])
-        ed_idx = remap_frame_index(ed_1 - 1, orig_t, new_t)
-        es_idx = remap_frame_index(es_1 - 1, orig_t, new_t)
+        ed_idx = selected.index(ed_orig)
+        es_idx = selected.index(es_orig)
 
+        src_spatial = tuple(int(x) for x in volume_t.shape[-3:])
         if self.spatial_size is not None:
             volume_t = resize_ctdhw(volume_t, self.spatial_size)
             seg_ed_t = resize_dhw(seg_ed_t, self.spatial_size, is_label=True)
             seg_es_t = resize_dhw(seg_es_t, self.spatial_size, is_label=True)
+            spacing_dhw = scale_spacing_dhw(spacing_dhw, src_spatial, self.spatial_size)
 
         # Full temporal GT: unlabeled frames = -1 (ignore_index)
         seg_seq = torch.full((new_t, *seg_ed_t.shape), -1, dtype=torch.long)
@@ -258,16 +288,17 @@ class ACDCDataset(Dataset):
         valid[ed_idx] = True
         valid[es_idx] = True
 
+        # P0-1: clinical inputs are height/weight/nb only — never phenotype/Group.
         height = float(info.get("Height", 0) or 0)
         weight = float(info.get("Weight", 0) or 0)
-        nb = float(info.get("NbFrame", volume_t.shape[1]) or volume_t.shape[1])
-        clinical_base = np.array([height, weight, nb, float(phenotype)], dtype=np.float32)
+        nb = float(info.get("NbFrame", orig_t) or orig_t)
+        clinical_base = np.array([height, weight, nb], dtype=np.float32)
         if self.clinical_dim <= 0:
             clinical = torch.zeros(0)
-        elif self.clinical_dim <= 4:
-            clinical = torch.from_numpy(clinical_base[: self.clinical_dim])
+        elif self.clinical_dim <= 3:
+            clinical = torch.from_numpy(clinical_base[: self.clinical_dim].copy())
         else:
-            extra = np.zeros(self.clinical_dim - 4, dtype=np.float32)
+            extra = np.zeros(self.clinical_dim - 3, dtype=np.float32)
             clinical = torch.from_numpy(np.concatenate([clinical_base, extra]))
 
         sample: dict[str, torch.Tensor] = {
@@ -278,6 +309,8 @@ class ACDCDataset(Dataset):
             "seg_frame_indices": torch.tensor([ed_idx, es_idx], dtype=torch.long),
             "ed_index": torch.tensor(ed_idx, dtype=torch.long),
             "es_index": torch.tensor(es_idx, dtype=torch.long),
+            "spacing": torch.tensor(spacing_dhw, dtype=torch.float32),
+            "affine": torch.from_numpy(np.asarray(affine, dtype=np.float32)),
             "mace": torch.tensor(1.0 if phenotype == 1 else 0.0, dtype=torch.float32),
             "phenotype": torch.tensor(phenotype, dtype=torch.long),
             "minf": torch.tensor(1.0 if phenotype == 1 else 0.0, dtype=torch.float32),
@@ -287,6 +320,8 @@ class ACDCDataset(Dataset):
         }
         if self.clinical_dim > 0:
             sample["clinical"] = clinical
+            # Supervised targets stay outside clinical features.
+            assert "phenotype" not in self.clinical_feature_names(self.clinical_dim)
 
         if self.train:
             clin = sample.get("clinical")

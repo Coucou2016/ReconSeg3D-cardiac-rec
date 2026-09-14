@@ -120,11 +120,35 @@ class Trainer:
         self.run_name = str(cfg.get("run_name") or Path(cfg.get("output_dir", "outputs")).name)
         self.output_dir = Path(cfg.get("output_dir", "outputs"))
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        sel_cfg = cfg.get("selection", {}) or {}
+        self.selection_metric, self.selection_mode = self._resolve_selection(sel_cfg, self.task)
         self.best_auc = float("-inf")
-        self.best_selection_score = float("-inf")
+        self.best_selection_score = float("-inf") if self.selection_mode == "max" else float("inf")
         self.best_val_loss = float("inf")
         self._epochs_no_improve = 0
         save_config_snapshot(self.cfg, self.output_dir / "config_snapshot.yaml")
+
+    @staticmethod
+    def _resolve_selection(sel_cfg: dict[str, Any], task: str) -> tuple[str, str]:
+        """Task-specific checkpoint metric. Higher-is-better unless mode=min."""
+        defaults = {
+            "motion": ("prop_ed2es_dice_mean", "max"),
+            "segmentation": ("dice_mean", "max"),
+            "reconstruction": ("recon_mae", "min"),
+            "joint": ("loss_total", "min"),
+            "phenotype": ("phenotype_acc", "max"),
+            "cox": ("c_index", "max"),
+            "mace": ("mace_auc", "max"),
+        }
+        metric = sel_cfg.get("metric")
+        mode = sel_cfg.get("mode")
+        if not metric:
+            metric, default_mode = defaults.get(str(task), ("loss_total", "min"))
+            mode = mode or default_mode
+        mode = str(mode or "max").lower()
+        if mode not in ("max", "min"):
+            raise ValueError(f"selection.mode must be max|min, got {mode}")
+        return str(metric), mode
 
     def _clinical(self, batch: dict[str, torch.Tensor]) -> torch.Tensor | None:
         if self.clinical_dim <= 0:
@@ -193,6 +217,7 @@ class Trainer:
             batch,
             num_classes=self.num_classes,
             compute_hd95=self.compute_hd95 and not train,
+            spacing=batch.get("spacing"),
         )
         metrics["loss_total"] = losses["total"].item()
         for key in LOSS_KEYS:
@@ -258,21 +283,36 @@ class Trainer:
         averaged.update(self._pool_ranking_metrics(extras_list))
         return averaged
 
-    def _selection_score(self, val_m: dict[str, float]) -> float:
-        """Task-aware score for best.pt (higher is better)."""
+    def _selection_score(self, val_m: dict[str, float]) -> tuple[float, str]:
+        """Return (score, mode) for best.pt. Falls back to val loss when metric missing."""
+        v = val_m.get(self.selection_metric, float("nan"))
+        if isinstance(v, float) and v == v:
+            return v, self.selection_mode
+        # Fallbacks when primary metric absent (e.g. motion prop Dice before flows).
+        if self.task == "motion":
+            loss = val_m.get("loss_total", float("nan"))
+            if isinstance(loss, float) and loss == loss:
+                return loss, "min"
         if self.task == "phenotype":
             for key in ("phenotype_acc", "phenotype_auc"):
-                v = val_m.get(key, float("nan"))
-                if isinstance(v, float) and v == v:
-                    return v
+                pv = val_m.get(key, float("nan"))
+                if isinstance(pv, float) and pv == pv:
+                    return pv, "max"
         if self.task == "cox":
-            v = val_m.get("c_index", float("nan"))
-            if isinstance(v, float) and v == v:
-                return v
-        v = val_m.get("mace_auc", float("nan"))
-        if isinstance(v, float) and v == v:
-            return v
-        return float("nan")
+            cv = val_m.get("c_index", float("nan"))
+            if isinstance(cv, float) and cv == cv:
+                return cv, "max"
+        loss = val_m.get("loss_total", float("nan"))
+        if isinstance(loss, float) and loss == loss:
+            return loss, "min"
+        return float("nan"), self.selection_mode
+
+    def _is_better(self, score: float, mode: str) -> bool:
+        if not (isinstance(score, float) and score == score):
+            return False
+        if mode == "min":
+            return score < self.best_selection_score
+        return score > self.best_selection_score
 
     def _write_metrics(self, metrics: dict[str, float], path: Path | None = None) -> Path:
         path = path or (self.output_dir / "metrics.json")
@@ -308,12 +348,12 @@ class Trainer:
                     logger.info("  train_%s=%.4f val_%s=%s", lk, train_m[lk], lk, val_m.get(lk))
             history = val_m
 
-            sel = self._selection_score(val_m)
+            sel, sel_mode = self._selection_score(val_m)
             auc = val_m.get("mace_auc", float("nan"))
             if isinstance(auc, float) and auc == auc and auc > self.best_auc:
                 self.best_auc = auc
             saved_best = False
-            if isinstance(sel, float) and sel == sel and sel > self.best_selection_score:
+            if self._is_better(sel, sel_mode):
                 self.best_selection_score = sel
                 self.save_checkpoint("best.pt")
                 saved_best = True

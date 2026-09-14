@@ -13,7 +13,7 @@ def test_per_frame_recon_shape_and_varies_over_t():
     assert out.reconstruction.shape == (2, 1, 4, 8, 16, 16)
     # Frames must not be copies of each other for non-constant input.
     assert not torch.allclose(out.reconstruction[:, :, 0], out.reconstruction[:, :, 1], atol=1e-6)
-    assert out.flow is not None and out.flow.shape == (2, 3, 3, 8, 16, 16)
+    assert out.flow is not None and out.flow.shape == (2, 3, 4, 8, 16, 16)
     assert out.seg_sequence is not None and out.seg_sequence.shape[2] == 4
 
 

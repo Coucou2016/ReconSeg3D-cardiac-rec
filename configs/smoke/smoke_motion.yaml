@@ -1,23 +1,23 @@
-# Publication motion-focused config: emphasize inv / smooth / jac / loop / ed_ref.
-# No MACE or Cox. Fake/synthetic forbidden — mount real ACDC under data.root.
-# For geometry unit smoke with synthetic, use configs/smoke_motion.yaml.
+# Smoke / CI geometry checks — synthetic allowed.
+# Do NOT use for publication subject tables.
 
 seed: 42
 deterministic: true
 device: auto
-output_dir: outputs/publication_motion
-run_name: publication_motion
+output_dir: outputs/smoke_motion
+run_name: smoke_motion
 
 data:
-  source: acdc
-  root: data/acdc
-  allow_fake_data: false
-  auto_fake: false
+  source: synthetic
+  allow_fake_data: true
+  auto_fake: true
   in_channels: 1
   num_frames: 8
   spatial_size: [16, 32, 32]
   batch_size: 2
   num_workers: 0
+  train_samples: 16
+  val_samples: 8
   clinical_dim: 0
   slice_sampling: false
 
@@ -33,7 +33,7 @@ model:
   predict_motion: true
   per_frame_seg: true
   fusion: concat
-  task: motion
+  task: mace
   use_svf: false
 
 loss:
@@ -60,12 +60,8 @@ loss:
 metrics:
   hd95: true
 
-selection:
-  metric: prop_ed2es_dice_mean
-  mode: max
-
 train:
-  epochs: 10
+  epochs: 2
   lr: 0.001
   weight_decay: 0.0001
   grad_clip: 1.0

@@ -100,14 +100,42 @@ def test_smoothness_and_jacobian_finite():
 
 
 def test_loop_consistency_identity():
+    # Closed-cycle stack: T pairs for T frames.
     flow = torch.zeros(1, 3, 4, 8, 8, 8)
     assert float(loop_consistency_loss(flow)) < 1e-6
 
 
+def test_closed_cycle_periodic_only_with_closing_edge():
+    """Synthetic +1+1+1-3=0 closes only when the closing edge is included."""
+    d = h = w = 12
+    # Three adjacent +1 dx and closing -3 → compose ≈ 0 (periodic).
+    flow_closed = torch.zeros(1, 3, 4, d, h, w)
+    flow_closed[:, 2, 0] = 1.0
+    flow_closed[:, 2, 1] = 1.0
+    flow_closed[:, 2, 2] = 1.0
+    flow_closed[:, 2, 3] = -3.0
+    closed = float(loop_consistency_loss(flow_closed))
+    # Adjacent-only (no closing): +1+1+1 ≠ 0
+    flow_open = flow_closed[:, :, :3]
+    open_loss = float(loop_consistency_loss(flow_open, require_closing=False))
+    assert closed < 0.25
+    assert open_loss > closed + 0.5
+    assert open_loss >= 1.0
+
+
+def test_motionnet_emits_t_pairs_including_close():
+    recon = torch.randn(1, 1, 4, 8, 16, 16)
+    net = MotionNet(in_channels=1, base_channels=4)
+    fwd, bwd = net(recon)
+    assert fwd is not None and bwd is not None
+    assert fwd.shape == (1, 3, 4, 8, 16, 16)
+    assert bwd.shape == fwd.shape
+
+
 def test_ed_anchored_paths_zero_when_identity_flows():
-    """Zero adjacent flows → zero ED-anchored compositions; L_ed_ref ≈ 0."""
+    """Zero adjacent+closing flows → zero ED-anchored compositions; L_ed_ref ≈ 0."""
     b, t, d, h, w = 2, 4, 8, 8, 8
-    fwd = torch.zeros(b, 3, t - 1, d, h, w)
+    fwd = torch.zeros(b, 3, t, d, h, w)  # closed
     bwd = torch.zeros_like(fwd)
     to_ed, from_ed = ed_anchored_paths(fwd, ed_index=0, flow_bwd=bwd)
     assert to_ed.shape == (b, 3, t, d, h, w)
@@ -117,6 +145,7 @@ def test_ed_anchored_paths_zero_when_identity_flows():
 
 
 def test_compose_flow_between_forward_and_backward():
+    # Closed T=3 → 3 pairs; linear compose uses adjacent only.
     fwd = torch.zeros(1, 3, 3, 8, 8, 8)
     bwd = torch.zeros(1, 3, 3, 8, 8, 8)
     fwd[:, 2, 0] = 1.0

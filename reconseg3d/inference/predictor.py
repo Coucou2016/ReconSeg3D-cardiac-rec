@@ -40,7 +40,10 @@ class Predictor:
         clinical = None
         if self.clinical_dim > 0:
             clinical = batch["clinical"].to(self.device)
-        out = self.model(volume, clinical)
+        seg_frame_indices = None
+        if "seg_frame_indices" in batch:
+            seg_frame_indices = batch["seg_frame_indices"].to(self.device)
+        out = self.model(volume, clinical, seg_frame_indices=seg_frame_indices)
         result: dict[str, torch.Tensor] = {
             "mace_prob": torch.sigmoid(out.mace_logits),
             "mace_logits": out.mace_logits,

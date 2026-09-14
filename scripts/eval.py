@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Evaluate a checkpoint on the validation split."""
+"""Evaluate a checkpoint on val (or test when the loader split exists)."""
 
 from __future__ import annotations
 
@@ -56,7 +56,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Evaluate ReconSeg3D")
     parser.add_argument("--config", type=str, default=str(ROOT / "configs" / "default.yaml"))
     parser.add_argument("--checkpoint", type=str, required=True)
-    parser.add_argument("--split", type=str, default="val", choices=["train", "val"])
+    parser.add_argument(
+        "--split",
+        type=str,
+        default="val",
+        choices=["train", "val", "test"],
+        help="Loader split. Official ACDC test folds are TODO (5-fold); "
+        "current ACDCDataset maps non-train → held-out val-like patients.",
+    )
     parser.add_argument(
         "--metrics-out",
         type=str,
@@ -68,7 +75,13 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO)
     cfg = load_config(args.config)
     predictor = Predictor(args.checkpoint)
-    loader = build_dataloader(cfg, args.split)
+    # Map "test" → val-style split until 5-fold test files exist.
+    split = "val" if args.split == "test" else args.split
+    if args.split == "test":
+        logging.warning(
+            "split=test: using val-style held-out patients (TODO: official 5-fold test lists)."
+        )
+    loader = build_dataloader(cfg, split)
 
     sums: dict[str, float] = {}
     n = 0
@@ -76,12 +89,17 @@ def main() -> None:
     for batch in loader:
         volume = batch["volume"].to(predictor.device)
         clinical = batch["clinical"].to(predictor.device) if predictor.clinical_dim > 0 else None
-        out = predictor.model(volume, clinical)
+        seg_frame_indices = batch.get("seg_frame_indices")
+        if seg_frame_indices is not None:
+            seg_frame_indices = seg_frame_indices.to(predictor.device)
+        out = predictor.model(volume, clinical, seg_frame_indices=seg_frame_indices)
+        spacing = batch.get("spacing")
         metrics = compute_metrics(
             output_to_metric_dict(out),
             batch,
             num_classes=cfg.get("model", {}).get("num_seg_classes", 5),
             compute_hd95=bool(cfg.get("metrics", {}).get("hd95", False)),
+            spacing=spacing,
         )
         for k, v in metrics.items():
             if k in EPOCH_RANKING_KEYS:
@@ -106,7 +124,13 @@ def main() -> None:
     avg.update(Trainer._pool_ranking_metrics(extras_list))
     ckpt_path = Path(args.checkpoint)
     run_name = predictor.cfg.get("run_name") or ckpt_path.parent.name
-    payload = {"run_name": run_name, "split": args.split, "n_batches": n, **_json_safe(avg)}
+    payload = {
+        "run_name": run_name,
+        "split": args.split,
+        "loader_split": split,
+        "n_batches": n,
+        **_json_safe(avg),
+    }
     print(json.dumps(payload, indent=2))
 
     out_path = Path(args.metrics_out) if args.metrics_out else ckpt_path.parent / "metrics.json"

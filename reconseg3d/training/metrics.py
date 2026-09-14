@@ -10,7 +10,6 @@ import torch
 import torch.nn.functional as F
 
 from reconseg3d.models.motion import (
-    compose_flow_sequence,
     cycle_consistency_loss,
     inverse_consistency_loss,
     jacobian_stats,
@@ -276,19 +275,20 @@ def compose_flows_between(
     flow_fwd: torch.Tensor,
     t_src: int,
     t_tgt: int,
+    *,
+    n_frames: int | None = None,
 ) -> torch.Tensor:
     """
     Compose adjacent forward flows from frame ``t_src`` to ``t_tgt``.
 
-    ``flow_fwd``: (B, 3, T-1, D, H, W).
+    ``flow_fwd``: closed ``(B, 3, T, ...)`` or legacy ``(B, 3, T-1, ...)``.
+    Closing edge is not used on linear paths.
     """
-    if t_tgt == t_src:
-        b, _, _, d, h, w = flow_fwd.shape
-        return torch.zeros(b, 3, d, h, w, device=flow_fwd.device, dtype=flow_fwd.dtype)
+    from reconseg3d.models.motion import compose_flow_between_indices
+
     if t_tgt < t_src:
         raise ValueError("compose_flows_between requires t_tgt >= t_src; use flow_bwd for reverse")
-    flows = [flow_fwd[:, :, i] for i in range(t_src, t_tgt)]
-    return compose_flow_sequence(flows)
+    return compose_flow_between_indices(flow_fwd, t_src, t_tgt, flow_bwd=None, n_frames=n_frames)
 
 
 def propagate_label_with_flow(
@@ -306,6 +306,22 @@ def propagate_label_with_flow(
     return warped.argmax(dim=1)
 
 
+def _batch_spacing(
+    spacing: Sequence[float] | torch.Tensor | None,
+    batch_idx: int,
+) -> Sequence[float] | None:
+    if spacing is None:
+        return None
+    if torch.is_tensor(spacing):
+        t = spacing
+        if t.ndim == 1:
+            return tuple(float(x) for x in t.detach().cpu().tolist())
+        if t.ndim == 2:
+            return tuple(float(x) for x in t[batch_idx].detach().cpu().tolist())
+        raise ValueError(f"spacing tensor must be (3,) or (B,3), got {tuple(t.shape)}")
+    return spacing
+
+
 def ed_es_label_propagation_metrics(
     seg_ed: torch.Tensor,
     seg_es: torch.Tensor,
@@ -314,50 +330,90 @@ def ed_es_label_propagation_metrics(
     es_index: torch.Tensor | int,
     flow_bwd: torch.Tensor | None = None,
     num_classes: int = 4,
-    spacing: Sequence[float] | None = None,
+    spacing: Sequence[float] | torch.Tensor | None = None,
     compute_hd95: bool = True,
 ) -> dict[str, float]:
     """
     Warp ED GT mask to ES (and reverse) with predicted flows; report Dice (+ HD95).
 
+    **Per-patient:** never reuse ``ed_index.reshape(-1)[0]`` for the whole batch.
+    Each sample ``b`` uses its own ED/ES; patient-level scores are then averaged.
+
     Real ACDC subject-level tables remain **待补充** until licensed data are mounted;
     this API is unit-tested with synthetic known warps.
     """
+    from reconseg3d.models.motion import compose_flow_between_indices
+
+    if seg_ed.ndim == 3:
+        seg_ed = seg_ed.unsqueeze(0)
+        seg_es = seg_es.unsqueeze(0)
+    b = int(seg_ed.shape[0])
+
     if isinstance(ed_index, int):
-        ed_i = ed_index
-        es_i = int(es_index)  # type: ignore[arg-type]
+        ed_t = torch.full((b,), int(ed_index), dtype=torch.long, device=flow_fwd.device)
     else:
-        ed_i = int(ed_index.reshape(-1)[0].item())
-        es_i = int(es_index.reshape(-1)[0].item())  # type: ignore[union-attr]
+        ed_t = ed_index.reshape(-1).long().to(flow_fwd.device)
+        if ed_t.numel() == 1 and b > 1:
+            ed_t = ed_t.expand(b)
+        if ed_t.numel() != b:
+            raise ValueError(f"ed_index length {ed_t.numel()} != batch {b}")
+
+    if isinstance(es_index, int):
+        es_t = torch.full((b,), int(es_index), dtype=torch.long, device=flow_fwd.device)
+    else:
+        es_t = es_index.reshape(-1).long().to(flow_fwd.device)  # type: ignore[union-attr]
+        if es_t.numel() == 1 and b > 1:
+            es_t = es_t.expand(b)
+        if es_t.numel() != b:
+            raise ValueError(f"es_index length {es_t.numel()} != batch {b}")
+
+    n_pairs = int(flow_fwd.shape[2])
+    max_idx = int(max(int(ed_t.max().item()), int(es_t.max().item())))
+    # Closed: n_pairs == T; open legacy: n_pairs == T-1 (max frame can equal n_pairs).
+    n_frames = n_pairs + 1 if max_idx >= n_pairs else n_pairs
+
+    patient_scores: list[dict[str, float]] = []
+    for bi in range(b):
+        ed_i = int(ed_t[bi].item())
+        es_i = int(es_t[bi].item())
+        fwd_b = flow_fwd[bi : bi + 1]
+        bwd_b = flow_bwd[bi : bi + 1] if flow_bwd is not None else None
+        seg_ed_b = seg_ed[bi : bi + 1].to(flow_fwd.device)
+        seg_es_b = seg_es[bi : bi + 1].to(flow_fwd.device)
+        sp = _batch_spacing(spacing, bi)
+
+        flow_ed_to_es = compose_flow_between_indices(
+            fwd_b, ed_i, es_i, flow_bwd=bwd_b, n_frames=n_frames
+        )
+        prop_es = propagate_label_with_flow(seg_ed_b, flow_ed_to_es, num_classes=num_classes)
+        dice_fwd = dice_per_class(prop_es, seg_es_b.long(), num_classes)
+        row: dict[str, float] = {"prop_ed2es_dice_mean": dice_fwd["dice_mean"]}
+        for name in ("lv", "rv", "myo"):
+            key = f"dice_{name}"
+            if key in dice_fwd:
+                row[f"prop_ed2es_{key}"] = dice_fwd[key]
+
+        if bwd_b is not None and es_i != ed_i:
+            flow_es_to_ed = compose_flow_between_indices(
+                fwd_b, es_i, ed_i, flow_bwd=bwd_b, n_frames=n_frames
+            )
+            prop_ed = propagate_label_with_flow(seg_es_b, flow_es_to_ed, num_classes=num_classes)
+            dice_bwd = dice_per_class(prop_ed, seg_ed_b.long(), num_classes)
+            row["prop_es2ed_dice_mean"] = dice_bwd["dice_mean"]
+
+        if compute_hd95:
+            try:
+                hd = hd95_per_class(prop_es, seg_es_b.long(), num_classes, spacing=sp)
+                row["prop_ed2es_hd95_mean"] = hd["hd95_mean"]
+            except Exception:
+                row["prop_ed2es_hd95_mean"] = float("nan")
+        patient_scores.append(row)
 
     out: dict[str, float] = {}
-    if es_i >= ed_i:
-        flow_ed_to_es = compose_flows_between(flow_fwd, ed_i, es_i)
-    elif flow_bwd is not None:
-        flow_ed_to_es = compose_flows_between(flow_bwd, es_i, ed_i)
-    else:
-        flow_ed_to_es = torch.zeros_like(flow_fwd[:, :, 0])
-
-    prop_es = propagate_label_with_flow(seg_ed, flow_ed_to_es, num_classes=num_classes)
-    dice_fwd = dice_per_class(prop_es, seg_es.long(), num_classes)
-    out["prop_ed2es_dice_mean"] = dice_fwd["dice_mean"]
-    for name in ("lv", "rv", "myo"):
-        key = f"dice_{name}"
-        if key in dice_fwd:
-            out[f"prop_ed2es_{key}"] = dice_fwd[key]
-
-    if flow_bwd is not None and es_i > ed_i:
-        flow_es_to_ed = compose_flow_sequence([flow_bwd[:, :, i] for i in range(es_i - 1, ed_i - 1, -1)])
-        prop_ed = propagate_label_with_flow(seg_es, flow_es_to_ed, num_classes=num_classes)
-        dice_bwd = dice_per_class(prop_ed, seg_ed.long(), num_classes)
-        out["prop_es2ed_dice_mean"] = dice_bwd["dice_mean"]
-
-    if compute_hd95:
-        try:
-            hd = hd95_per_class(prop_es, seg_es.long(), num_classes, spacing=spacing)
-            out["prop_ed2es_hd95_mean"] = hd["hd95_mean"]
-        except Exception:
-            out["prop_ed2es_hd95_mean"] = float("nan")
+    keys = set().union(*(r.keys() for r in patient_scores)) if patient_scores else set()
+    for key in keys:
+        vals = [r[key] for r in patient_scores if key in r and r[key] == r[key]]
+        out[key] = float(np.mean(vals)) if vals else float("nan")
     return out
 
 
@@ -366,17 +422,34 @@ def compute_metrics(
     batch: dict[str, torch.Tensor],
     num_classes: int = 5,
     compute_hd95: bool = True,
-    spacing: Sequence[float] | None = None,
+    spacing: Sequence[float] | torch.Tensor | None = None,
 ) -> dict[str, float]:
     seg_pred = outputs["segmentation"].argmax(dim=1)
     seg_tgt = batch["segmentation"].long()
     if seg_tgt.device != seg_pred.device:
         seg_tgt = seg_tgt.to(seg_pred.device)
+
+    if spacing is None and "spacing" in batch:
+        spacing = batch["spacing"]
+
     metrics: dict[str, Any] = dice_per_class(seg_pred, seg_tgt, num_classes)
     metrics["iou_foreground"] = iou_per_class(seg_pred, seg_tgt, num_classes)
     if compute_hd95:
         try:
-            metrics.update(hd95_per_class(seg_pred, seg_tgt, num_classes, spacing=spacing))
+            # Per-sample spacing when (B,3); else shared.
+            if torch.is_tensor(spacing) and spacing.ndim == 2 and spacing.shape[0] > 1:
+                hd_acc: dict[str, list[float]] = {}
+                for bi in range(seg_pred.shape[0]):
+                    sp = _batch_spacing(spacing, bi)
+                    part = hd95_per_class(seg_pred[bi : bi + 1], seg_tgt[bi : bi + 1], num_classes, spacing=sp)
+                    for k, v in part.items():
+                        hd_acc.setdefault(k, []).append(v)
+                for k, vals in hd_acc.items():
+                    finite = [v for v in vals if v == v]
+                    metrics[k] = float(np.mean(finite)) if finite else float("nan")
+            else:
+                sp = _batch_spacing(spacing, 0) if spacing is not None else None
+                metrics.update(hd95_per_class(seg_pred, seg_tgt, num_classes, spacing=sp))
         except Exception:
             metrics["hd95_mean"] = float("nan")
 
@@ -386,9 +459,8 @@ def compute_metrics(
         vol = vol.to(device=recon.device, dtype=recon.dtype)
         metrics["recon_mae"] = F.l1_loss(recon, vol, reduction="mean").item()
         metrics["recon_psnr"] = psnr(recon, vol)
-        # Global SSIM proxy — not windowed SSIM.
+        # Global SSIM proxy — not windowed SSIM. Do not alias as recon_ssim.
         metrics["recon_ssim_proxy"] = ssim_global(recon, vol)
-        metrics["recon_ssim"] = metrics["recon_ssim_proxy"]  # backward-compatible alias
 
     if "mace_logits" in outputs and "mace" in batch:
         metrics.update(mace_metrics(outputs["mace_logits"], batch["mace"].to(outputs["mace_logits"].device)))
@@ -449,18 +521,24 @@ def compute_metrics(
         and "segmentation_sequence" in batch
     ):
         try:
-            ed_i = int(batch["ed_index"].reshape(-1)[0].item())
-            es_i = int(batch["es_index"].reshape(-1)[0].item())
             seg_seq_gt = batch["segmentation_sequence"]
             if seg_seq_gt.ndim == 5:
-                seg_ed = seg_seq_gt[:, ed_i].to(flow.device)
-                seg_es = seg_seq_gt[:, es_i].to(flow.device)
+                # Per-patient ED/ES gather (never reshape(-1)[0] for whole batch).
+                bsz = seg_seq_gt.shape[0]
+                ed_t = batch["ed_index"].reshape(-1).long()
+                es_t = batch["es_index"].reshape(-1).long()
+                if ed_t.numel() == 1 and bsz > 1:
+                    ed_t = ed_t.expand(bsz)
+                if es_t.numel() == 1 and bsz > 1:
+                    es_t = es_t.expand(bsz)
+                seg_ed = torch.stack([seg_seq_gt[i, int(ed_t[i])] for i in range(bsz)], dim=0).to(flow.device)
+                seg_es = torch.stack([seg_seq_gt[i, int(es_t[i])] for i in range(bsz)], dim=0).to(flow.device)
                 prop = ed_es_label_propagation_metrics(
                     seg_ed,
                     seg_es,
                     flow,
-                    ed_i,
-                    es_i,
+                    ed_t,
+                    es_t,
                     flow_bwd=flow_bwd,
                     num_classes=num_classes,
                     spacing=spacing,

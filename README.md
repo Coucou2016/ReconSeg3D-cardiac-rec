@@ -9,9 +9,9 @@ It is **not** a claim of the original paper’s private-AMI **0.934 AUC**. Heart
 ## 项目简介 / Overview
 
 1. **Per-frame 3D reconstruction** `(B, C, T, D, H, W)` from sparse SA (broadcast ablation retained)
-2. **Geometry-aware motion**: true `L_inv`, smoothness, Jacobian folding, loop consistency; image-cycle and volume-curve are auxiliary / physiological only
-3. **ED/ES-aware segmentation** (ACDC labeled phases; unlabeled frames via motion self-supervision)
-4. **Optional** phenotype / Cox / MACE / HeartTTable-lite (off in `configs/publication_*.yaml`)
+2. **Geometry-aware motion**: true `L_inv`, smoothness, Jacobian folding, **closed-cycle** `L_periodic` (T pairs incl. `T-1→0`); image-cycle and volume-curve are auxiliary / physiological only
+3. **ED/ES-aware segmentation** (ACDC labeled phases; anchor-preserving temporal subsample; unlabeled frames via motion self-supervision)
+4. **Optional** phenotype / Cox / MACE / HeartTTable-lite (off in `configs/publication_*.yaml`; phenotype proxy under `configs/proxy/`)
 
 See [docs/PAPER_PLAN.md](docs/PAPER_PLAN.md) for claim boundaries. Demo metrics are **DEMO-labeled**.
 
@@ -37,11 +37,12 @@ Sparse-SA recon + seg + motion losses:
 python scripts/train.py --config configs/paper_recon.yaml --epochs 2 --output-dir outputs/paper_recon
 ```
 
-ACDC phenotype (fake or real root — see [docs/DATA.md](docs/DATA.md)):
+ACDC phenotype proxy (fake or real root — see [docs/DATA.md](docs/DATA.md)):
 
 ```powershell
 python scripts/prepare_demo_data.py
-python scripts/train.py --config configs/paper_acdc.yaml --epochs 2 --output-dir outputs/paper_acdc
+python scripts/train.py --config configs/proxy/proxy_acdc_phenotype.yaml --epochs 2 --output-dir outputs/proxy_acdc
+# shim still works: configs/paper_acdc.yaml
 ```
 
 ## Paper experiments (demo)
