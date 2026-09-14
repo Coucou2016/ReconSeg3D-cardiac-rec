@@ -60,7 +60,7 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest tests/ -v
 |----|------|--------|
 | E1 | Expanded tests (SSIM3D, EF mL, folds, aggregate, docstring, selection) | **Done** |
 | E2 | Full pytest green | **Done** (96 passed) |
-| E3 | Commit + push (code/docs; no huge data) | **Done** (this turn) |
+| E3 | Commit + push (code/docs; no huge data) | **Done** — `7486b07` on `main` (https://github.com/Coucou2016/ReconSeg3D-cardiac-rec) |
 
 ## Externally blocked (infra complete; fail loud / 待补充)
 
