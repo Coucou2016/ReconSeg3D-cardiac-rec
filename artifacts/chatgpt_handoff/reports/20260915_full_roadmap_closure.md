@@ -18,8 +18,10 @@ Independent audit found real gaps; closed in a subsequent commit on `main`:
 
 ```text
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest tests/ -v
-(see latest push commit for exact passed count)
+============================= 105 passed =============================
 ```
+
+Audit-gap fix commit: `678c27b` on `main`.
 
 ## A. Tiny leftovers
 
@@ -70,8 +72,8 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest tests/ -v
 | ID | Item | Status |
 |----|------|--------|
 | E1 | Expanded tests (SSIM3D, EF mL, folds, aggregate, docstring, selection) | **Done** |
-| E2 | Full pytest green | **Done** (see push commit) |
-| E3 | Commit + push (code/docs; no huge data) | **Done** — prior `7486b07`; audit-gap fix supersedes B5 honesty on `main` |
+| E2 | Full pytest green | **Done** (105 passed) |
+| E3 | Commit + push (code/docs; no huge data) | **Done** — audit-gap fix `678c27b` on `main` |
 
 ## Externally blocked (infra complete; fail loud / 待补充)
 
