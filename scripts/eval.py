@@ -60,22 +60,51 @@ def _merge_prior_losses(out_path: Path, payload: dict[str, Any]) -> dict[str, An
 
 
 def _per_sample_metrics(
-    metrics_batch: dict[str, float],
+    metrics_sample: dict[str, float],
     batch: dict[str, Any],
     batch_idx: int,
 ) -> dict[str, Any]:
-    """Attach identity fields; batch metrics are already patient-aware means."""
-    row: dict[str, Any] = dict(metrics_batch)
+    """Attach identity fields to a single-sample metrics dict."""
+    row: dict[str, Any] = dict(metrics_sample)
     pids = batch.get("patient_id")
     if isinstance(pids, (list, tuple)) and batch_idx < len(pids):
         row["patient_id"] = pids[batch_idx]
-    elif "case_id" in batch:
+    elif isinstance(pids, str) and batch_idx == 0:
+        row["patient_id"] = pids
+    if "case_id" in batch:
         cid = batch["case_id"]
         if torch.is_tensor(cid):
-            row["case_id"] = int(cid.reshape(-1)[batch_idx].item()) if cid.numel() > batch_idx else int(cid.reshape(-1)[0].item())
-        else:
+            flat = cid.reshape(-1)
+            row["case_id"] = int(flat[batch_idx].item()) if flat.numel() > batch_idx else int(flat[0].item())
+        elif isinstance(cid, (list, tuple)) and batch_idx < len(cid):
+            row["case_id"] = cid[batch_idx]
+        elif batch_idx == 0:
             row["case_id"] = cid
     return row
+
+
+def _slice_tensor_or_list(value: Any, idx: int, batch_size: int) -> Any:
+    if torch.is_tensor(value):
+        if value.ndim == 0:
+            return value
+        if value.shape[0] == batch_size:
+            return value[idx : idx + 1]
+        return value
+    if isinstance(value, (list, tuple)) and len(value) == batch_size:
+        item = value[idx]
+        return [item] if isinstance(value, list) else (item,)
+    return value
+
+
+def _slice_batch(batch: dict[str, Any], idx: int, batch_size: int) -> dict[str, Any]:
+    return {k: _slice_tensor_or_list(v, idx, batch_size) for k, v in batch.items()}
+
+
+def _slice_outputs(outputs: dict[str, Any], idx: int, batch_size: int) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for k, v in outputs.items():
+        out[k] = _slice_tensor_or_list(v, idx, batch_size)
+    return out
 
 
 def main() -> None:
@@ -162,8 +191,28 @@ def main() -> None:
         }
         batch_metrics.append(filtered)
         batch_sizes.append(bsz)
+        # True per-patient rows: recompute metrics on each sample (never duplicate batch-mean).
+        metric_dict = output_to_metric_dict(out)
         for bi in range(bsz):
-            case_rows.append(_per_sample_metrics(filtered, batch, bi))
+            if bsz == 1:
+                sample_metrics = filtered
+            else:
+                sample_batch = _slice_batch(batch, bi, bsz)
+                sample_out = _slice_outputs(metric_dict, bi, bsz)
+                sample_spacing = sample_batch.get("spacing", spacing)
+                sample_raw = compute_metrics(
+                    sample_out,
+                    sample_batch,
+                    num_classes=cfg.get("model", {}).get("num_seg_classes", 5),
+                    compute_hd95=bool(cfg.get("metrics", {}).get("hd95", False)),
+                    spacing=sample_spacing,
+                )
+                sample_metrics = {
+                    k: v
+                    for k, v in sample_raw.items()
+                    if k not in EPOCH_RANKING_KEYS and isinstance(v, float)
+                }
+            case_rows.append(_per_sample_metrics(sample_metrics, batch, bi))
 
         extras: dict[str, Any] = {
             "mace_logits": out.mace_logits.detach().float().cpu(),

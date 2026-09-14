@@ -10,6 +10,7 @@
     "RV"
   ],
   "n_patients": 8,
+  "synthetic_placeholder": true,
   "files": [
     "acdc_fold0.json",
     "acdc_fold1.json",
@@ -17,5 +18,5 @@
     "acdc_fold3.json",
     "acdc_fold4.json"
   ],
-  "note": "Diagnosis-stratified CV. Real ACDC subject tables remain \u5f85\u8865\u5145 until licensed data are mounted; committed lists may reflect fake CI patients when real data were absent at generation time."
+  "note": "CI/SMOKE PLACEHOLDER ONLY — not publication CV. Generated from 8 fake patients; some folds have empty train/val. Regenerate with licensed ACDC via scripts/make_acdc_folds.py. Real ACDC subject tables remain \u5f85\u8865\u5145."
 }

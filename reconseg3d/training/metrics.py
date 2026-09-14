@@ -260,28 +260,39 @@ def ssim_3d(
     return float(ssim_map.mean().item())
 
 
-def chamber_volume_ml(
+def chamber_voxel_counts(
     mask: torch.Tensor,
-    spacing: Sequence[float] | torch.Tensor | None,
     *,
     class_index: int = 1,
 ) -> torch.Tensor:
-    """Physical chamber volume in mL from a label mask and spacing (sz,sy,sx) mm.
-
-    ``mask``: (B,D,H,W) int labels or bool. Returns (B,) volumes in mL
-    (1 mm³ = 0.001 mL). If spacing is missing, uses unit voxels (still labeled
-    as physical only when spacing is present in callers).
-    """
+    """LV (or class) voxel counts. ``mask``: (B,D,H,W) → (B,) counts."""
     if mask.ndim == 3:
         mask = mask.unsqueeze(0)
     if mask.dtype == torch.bool:
         sel = mask.float()
     else:
         sel = (mask.long() == int(class_index)).float()
-    counts = sel.sum(dim=(1, 2, 3))
+    return sel.sum(dim=(1, 2, 3))
+
+
+def chamber_volume_ml(
+    mask: torch.Tensor,
+    spacing: Sequence[float] | torch.Tensor,
+    *,
+    class_index: int = 1,
+) -> torch.Tensor:
+    """Physical chamber volume in mL from a label mask and spacing (sz,sy,sx) mm.
+
+    ``mask``: (B,D,H,W) int labels or bool. Returns (B,) volumes in mL
+    (1 mm³ = 0.001 mL). ``spacing`` is required — without it, use
+    ``chamber_voxel_counts`` / ``edv_vox`` keys instead of ``*_ml``.
+    """
     if spacing is None:
-        voxel_ml = 0.001
-        return counts * voxel_ml
+        raise ValueError(
+            "chamber_volume_ml requires physical spacing (sz,sy,sx) mm; "
+            "use chamber_voxel_counts when spacing is unavailable"
+        )
+    counts = chamber_voxel_counts(mask, class_index=class_index)
     if torch.is_tensor(spacing):
         sp = spacing.detach().float().to(counts.device)
         if sp.ndim == 1:
@@ -306,11 +317,20 @@ def physical_edv_esv_ef(
     *,
     lv_index: int = 1,
 ) -> dict[str, float]:
-    """EDV/ESV (mL) and EF (%) from ED/ES label volumes + physical spacing.
+    """EDV/ESV and EF from ED/ES label volumes.
 
-    Primary functional metrics for publication tables. Do not use max/min
-    voxel proxy as the main claim when ED/ES phases and spacing are available.
+    With physical ``spacing`` (sz,sy,sx) mm → ``edv_ml`` / ``esv_ml`` / ``ef_percent``.
+    Without spacing → ``edv_vox`` / ``esv_vox`` / ``ef_proxy`` only (never ``*_ml``).
     """
+    if spacing is None:
+        edv = chamber_voxel_counts(seg_ed, class_index=lv_index)
+        esv = chamber_voxel_counts(seg_es, class_index=lv_index)
+        ef = (edv - esv) / edv.clamp_min(1.0)
+        return {
+            "edv_vox": float(edv.mean().item()),
+            "esv_vox": float(esv.mean().item()),
+            "ef_proxy": float(ef.mean().item()),
+        }
     edv = chamber_volume_ml(seg_ed, spacing, class_index=lv_index)
     esv = chamber_volume_ml(seg_es, spacing, class_index=lv_index)
     ef = (edv - esv) / edv.clamp_min(1e-6) * 100.0
@@ -725,9 +745,14 @@ def compute_metrics(
                 metrics.update(phys)
                 # GT reference volumes (for bias tables when available).
                 gt_phys = physical_edv_esv_ef(seg_ed_vol, seg_es_vol, spacing, lv_index=1)
-                metrics["edv_ml_gt"] = gt_phys["edv_ml"]
-                metrics["esv_ml_gt"] = gt_phys["esv_ml"]
-                metrics["ef_percent_gt"] = gt_phys["ef_percent"]
+                if "edv_ml" in gt_phys:
+                    metrics["edv_ml_gt"] = gt_phys["edv_ml"]
+                    metrics["esv_ml_gt"] = gt_phys["esv_ml"]
+                    metrics["ef_percent_gt"] = gt_phys["ef_percent"]
+                else:
+                    metrics["edv_vox_gt"] = gt_phys["edv_vox"]
+                    metrics["esv_vox_gt"] = gt_phys["esv_vox"]
+                    metrics["ef_proxy_gt"] = gt_phys["ef_proxy"]
         except Exception:
             metrics["ef_percent"] = float("nan")
 

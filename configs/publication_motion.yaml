@@ -12,7 +12,7 @@ data:
   root: data/acdc
   allow_fake_data: false
   auto_fake: false
-  fold: 0
+  fold: null  # use simple train/val until real folds; see splits/README.md
   splits_dir: splits
   in_channels: 1
   num_frames: 8

@@ -69,7 +69,7 @@ Override with `selection.metric` / `selection.mode` in YAML.
 
 | Component | Paper | This repo |
 |-----------|-------|-----------|
-| Grid | 256×256×128 | Smoke `(16,32,32)`; publication mid `(32,64,64)`; hires `(64,128,128)` toward paper |
+| Grid | 256×256×128 | Smoke `(16,32,32)`; publication mid `(32,64,64)`; **hires = intermediate `(64,128,128)` — not paper 256³**; optional stub `publication_recon_256.yaml` `(128,256,256)` if VRAM allows (not Done) |
 | Motion | — | Closed-cycle inverse-consistent pull + ED-ref; image-cycle auxiliary |
 | SVF | — | **Done** — `model.use_svf: true` + scaling-and-squaring (`publication_motion_svf.yaml`) |
 | Temporal | — | `temporal_conv` \| `conv_lstm` \| `temporal_attention` |
@@ -86,7 +86,7 @@ Override with `selection.metric` / `selection.mode` in YAML.
 - [x] Windowed 3D SSIM (`ssim_3d`) + tests — 2026-09-15
 - [x] Physical EDV/ESV/EF (mL/%) + patient-level CSV/JSON + bootstrap CI — 2026-09-15
 - [x] Trainer sample-weighted aggregation — 2026-09-15
-- [x] 5-fold diagnosis-stratified ACDC splits (`splits/acdc_fold{0-4}.json`) — 2026-09-15
+- [x] 5-fold diagnosis-stratified ACDC split **API** (`write_acdc_folds` / `fold`/`fold_file`) — 2026-09-15; committed `splits/acdc_fold*.json` are **CI/smoke placeholders only** (`synthetic_placeholder: true`; regenerate on licensed ACDC)
 - [x] Multi-seed harness (`scripts/run_multiseed.py`) — 2026-09-15
 - [x] Publication / smoke / proxy config hygiene; deprecate `paper_*` as formal results — 2026-09-15
 - [x] Physical sparse SA (`slice_trans_mm` / `sampling_ratio`) — 2026-09-15
@@ -100,7 +100,7 @@ Override with `selection.metric` / `selection.mode` in YAML.
 - [ ] Full VoxelMorph / TransMorph / MulViMotion / FlowReg **numbers** on licensed ACDC (adapters exist; need data + optional external install)
 - [ ] M&Ms download + multi-site **tables** (loader + hard-fail ready; need credentials/download)
 - [ ] Real ACDC subject-level publication tables (need CREATIS / challenge license mount)
-- [ ] Full 256³ paper-scale training runs (hires config provided; needs GPU + data)
+- [ ] Full 256³ paper-scale training runs (needs GPU + data; `publication_recon_hires` is `[64,128,128]` intermediate only; optional `publication_recon_256.yaml` stub — **not** claimed Done)
 - [ ] Nested CV / calibration for any future survival claims (not main line)
 
 ## Demo paper pipeline (no private AMI)

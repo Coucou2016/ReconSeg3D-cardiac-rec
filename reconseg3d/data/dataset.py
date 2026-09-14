@@ -345,6 +345,13 @@ def build_dataloader(cfg: dict[str, Any], split: str = "train") -> DataLoader:
             if auto_fake:
                 logger.warning("No ACDC patients in %s; creating fake layout (auto_fake=true)", root)
                 make_fake_acdc(root, n_patients=int(data_cfg.get("fake_n_patients", 8)), spatial=spatial, n_frames=num_frames)
+        if fold_path is not None:
+            from reconseg3d.data.splits import assert_fold_train_nonempty, load_fold_file
+
+            fold_data = load_fold_file(fold_path)
+            assert_fold_train_nonempty(
+                fold_data, path=fold_path, allow_fake_data=allow_fake
+            )
         ds = ACDCDataset(
             root=root,
             num_frames=num_frames,

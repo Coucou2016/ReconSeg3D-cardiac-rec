@@ -28,5 +28,6 @@
     "DCM": 1,
     "HCM": 0,
     "RV": 0
-  }
+  },
+  "synthetic_placeholder": true
 }

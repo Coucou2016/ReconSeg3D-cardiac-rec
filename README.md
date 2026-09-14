@@ -115,10 +115,10 @@ Input (B,C,T,D,H,W)  [optional sparse SA; mm translation / sampling_ratio]
 `model.task`: `reconstruction` | `motion` | `segmentation` | `joint` | `phenotype` | `cox` | `mace` (last three supplementary).  
 Checkpointing uses `selection.metric` / `mode` (never blind `mace_auc` when `w_mace:0`).
 
-Folds: `splits/acdc_fold{0-4}.json` (diagnosis-stratified). Multi-seed: `scripts/run_multiseed.py`.  
-Eval writes `results/case_metrics.csv`, `summary_metrics.json`, `bootstrap_ci.json`.
+Folds: diagnosis-stratified API via `data.fold` / `fold_file`. Committed `splits/acdc_fold*.json` are **CI/smoke placeholders** only (`synthetic_placeholder: true`; see `splits/README.md`). Publication configs default `fold: null` until real folds are regenerated. Multi-seed: `scripts/run_multiseed.py`.  
+Eval writes **one row per patient** in `results/case_metrics.csv` (default `batch_size=1`), plus `summary_metrics.json`, `bootstrap_ci.json`.
 
-Standalone compact recon/seg: `CompactVolumeRecon`, `VolumeUNet3D`. Paper-scale 256×256×128 via hires config + GPU — not smoke default.
+Standalone compact recon/seg: `CompactVolumeRecon`, `VolumeUNet3D`. `publication_recon_hires` uses **`[64,128,128]` intermediate** — **not** paper 256³. Optional VRAM-gated stub: `configs/publication/publication_recon_256.yaml` (not Done / no wall-clock claim).
 
 ## 复现 / Reproducibility
 
@@ -134,7 +134,7 @@ Standalone compact recon/seg: `CompactVolumeRecon`, `VolumeUNet3D`. Paper-scale 
 |------|------|
 | 合成数据 | 仅用于流水线验证，不代表真实 AMI 分布 |
 | 重建 | 默认 **逐帧解码**；旧版时间维广播仍可作为消融 |
-| 骨干 | Compact CNN/UNet+small transformer，不是原论文 3D ViT / nnU-Net 256³ |
+| 骨干 | Compact CNN/UNet+small transformer，不是原论文 3D ViT / nnU-Net 256³；hires 仅为 `[64,128,128]` 中间分辨率 |
 | MACE AUC | **不报告 0.934**；公开验证是重建/分割与 ACDC MINF、EMIDEC scar 代理 |
 | Cox / HeartTTable | 接口已就绪；5 年 MACE 需要私有 AMI 队列 |
 | HD95 / SSIM | HD95 uses batch `spacing`; tables prefer **`ssim_3d`**; `recon_ssim_proxy` is global-only (no `recon_ssim` alias) |

@@ -15,12 +15,14 @@ from reconseg3d.utils.config import load_config
 
 
 def test_write_and_load_acdc_folds(tmp_path: Path):
-    root = make_fake_acdc(tmp_path / "acdc", n_patients=20, spatial=(8, 16, 16), n_frames=4)
+    # ≥5 patients/diagnosis so every fold bucket is non-empty under stratification.
+    root = make_fake_acdc(tmp_path / "acdc", n_patients=25, spatial=(8, 16, 16), n_frames=4)
     out = tmp_path / "splits"
     paths = write_acdc_folds(root, out_dir=out, n_folds=5, seed=0, fake_if_empty=False)
     assert len(paths) == 5
     fold0 = load_fold_file(paths[0])
     assert set(fold0.keys()) >= {"train", "val", "test", "fold"}
+    assert len(fold0["train"]) > 0 and len(fold0["val"]) > 0 and len(fold0["test"]) > 0
     # No overlap between train and test
     assert set(fold0["train"]).isdisjoint(set(fold0["test"]))
     ds = ACDCDataset(
@@ -55,6 +57,85 @@ def test_repo_split_files_exist():
         assert p.is_file(), p
         data = load_fold_file(p)
         assert data["fold"] == k
+        assert data.get("synthetic_placeholder") is True
+
+
+def test_placeholder_manifest_flag():
+    root = Path(__file__).resolve().parents[1]
+    import json
+
+    man = json.loads((root / "splits" / "acdc_folds_manifest.json").read_text(encoding="utf-8"))
+    assert man["synthetic_placeholder"] is True
+    assert man["n_patients"] < 20  # smoke-scale fake
+    assert (root / "splits" / "README.md").is_file()
+
+
+def test_write_acdc_folds_refuses_degenerate(tmp_path: Path):
+    root = make_fake_acdc(tmp_path / "acdc", n_patients=8, spatial=(8, 16, 16), n_frames=4)
+    out = tmp_path / "splits"
+    try:
+        write_acdc_folds(root, out_dir=out, n_folds=5, seed=0, fake_if_empty=False, allow_degenerate=False)
+        raised = False
+    except ValueError as e:
+        raised = True
+        assert "empty" in str(e).lower() or "minimum" in str(e).lower() or "degenerate" in str(e).lower() or "Refusing" in str(e)
+    assert raised
+
+
+def test_write_acdc_folds_allow_degenerate_smoke(tmp_path: Path):
+    root = make_fake_acdc(tmp_path / "acdc", n_patients=8, spatial=(8, 16, 16), n_frames=4)
+    out = tmp_path / "splits"
+    paths = write_acdc_folds(
+        root, out_dir=out, n_folds=5, seed=0, fake_if_empty=False, allow_degenerate=True
+    )
+    assert len(paths) == 5
+    import json
+
+    man = json.loads((out / "acdc_folds_manifest.json").read_text(encoding="utf-8"))
+    assert man["synthetic_placeholder"] is True
+
+
+def test_empty_train_hard_fail_publication_mode(tmp_path: Path):
+    from reconseg3d.data.dataset import build_dataloader
+
+    root = make_fake_acdc(tmp_path / "acdc", n_patients=8, spatial=(8, 16, 16), n_frames=4)
+    fold_path = tmp_path / "empty_train_fold.json"
+    fold_path.write_text(
+        '{"fold":0,"train":[],"val":["patient001"],"test":["patient002"]}',
+        encoding="utf-8",
+    )
+    cfg = {
+        "data": {
+            "source": "acdc",
+            "root": str(root),
+            "allow_fake_data": False,
+            "auto_fake": False,
+            "fold_file": str(fold_path),
+            "spatial_size": [8, 16, 16],
+            "num_frames": 4,
+            "batch_size": 1,
+            "clinical_dim": 0,
+        },
+        "model": {"num_seg_classes": 4},
+    }
+    try:
+        build_dataloader(cfg, "train")
+        raised = False
+    except RuntimeError as e:
+        raised = True
+        assert "empty train" in str(e).lower()
+    assert raised
+
+
+def test_publication_configs_fold_null():
+    root = Path(__file__).resolve().parents[1]
+    for rel in (
+        "configs/publication/publication_recon.yaml",
+        "configs/publication/publication_seg.yaml",
+        "configs/publication_recon.yaml",
+    ):
+        cfg = yaml.safe_load((root / rel).read_text(encoding="utf-8"))
+        assert cfg["data"].get("fold") is None, rel
 
 
 def test_mms_fake_and_hard_fail(tmp_path: Path):

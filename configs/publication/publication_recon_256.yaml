@@ -1,22 +1,24 @@
-# Closer-to-paper spatial grid (D,H,W) ~ 128×256×256 intent.
-# Requires GPU memory; not for CI. Fake data forbidden.
+# OPTIONAL stub toward paper-scale (D,H,W) ≈ [128, 256, 256] (~256×256×128 H×W×D).
+# Not claimed Done: requires high VRAM + licensed ACDC; no wall-clock runs in-repo.
+# Prefer publication_recon_hires.yaml ([64,128,128]) unless hardware allows this grid.
+# Copy/adapt and set data.root + real fold_file after mounting ACDC.
 
 seed: 42
 deterministic: true
 device: auto
-output_dir: outputs/publication_recon_hires
-run_name: publication_recon_hires
+output_dir: outputs/publication_recon_256
+run_name: publication_recon_256
 
 data:
   source: acdc
   root: data/acdc
   allow_fake_data: false
   auto_fake: false
-  fold: null  # use simple train/val until real folds; see splits/README.md
+  fold: null  # set fold / fold_file after regenerating real splits/
   splits_dir: splits
   in_channels: 1
   num_frames: 12
-  spatial_size: [64, 128, 128]  # step toward [128, 256, 256]
+  spatial_size: [128, 256, 256]  # paper-scale intent; VRAM-gated
   batch_size: 1
   num_workers: 0
   clinical_dim: 0

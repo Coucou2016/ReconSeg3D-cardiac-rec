@@ -21,6 +21,11 @@ def main() -> None:
     p.add_argument("--n-folds", type=int, default=5)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--n-fake", type=int, default=20)
+    p.add_argument(
+        "--allow-degenerate",
+        action="store_true",
+        help="Allow empty train/val/test (CI/smoke placeholders only)",
+    )
     args = p.parse_args()
     paths = write_acdc_folds(
         args.root,
@@ -28,6 +33,7 @@ def main() -> None:
         n_folds=args.n_folds,
         seed=args.seed,
         n_fake=args.n_fake,
+        allow_degenerate=bool(args.allow_degenerate),
     )
     for path in paths:
         print(path)

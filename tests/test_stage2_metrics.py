@@ -66,6 +66,47 @@ def test_physical_edv_esv_ef_ml():
     assert abs(out["ef_percent"] - 50.0) < 1e-3
 
 
+def test_no_ml_keys_without_spacing():
+    seg_ed = torch.zeros(1, 8, 8, 8, dtype=torch.long)
+    seg_es = torch.zeros(1, 8, 8, 8, dtype=torch.long)
+    seg_ed.view(-1)[:100] = 1
+    seg_es.view(-1)[:40] = 1
+    out = physical_edv_esv_ef(seg_ed, seg_es, None, lv_index=1)
+    assert "edv_ml" not in out and "esv_ml" not in out and "ef_percent" not in out
+    assert "edv_vox" in out and "esv_vox" in out and "ef_proxy" in out
+    assert abs(out["edv_vox"] - 100.0) < 1e-5
+    assert abs(out["esv_vox"] - 40.0) < 1e-5
+
+
+def test_compute_metrics_no_ml_without_spacing():
+    b, t, d, h, w = 1, 4, 8, 8, 8
+    seg_seq = torch.full((b, t, d, h, w), 0, dtype=torch.long)
+    ed = torch.zeros(d, h, w, dtype=torch.long)
+    es = torch.zeros(d, h, w, dtype=torch.long)
+    ed.view(-1)[:200] = 1
+    es.view(-1)[:100] = 1
+    seg_seq[0, 0] = ed
+    seg_seq[0, 2] = es
+    logits = torch.nn.functional.one_hot(seg_seq, num_classes=4).permute(0, 5, 1, 2, 3, 4).float() * 10.0
+    batch = {
+        "volume": torch.randn(b, 1, t, d, h, w),
+        "segmentation": ed.unsqueeze(0),
+        "segmentation_sequence": seg_seq,
+        "ed_index": torch.tensor([0]),
+        "es_index": torch.tensor([2]),
+        "mace": torch.tensor([0.0]),
+    }
+    outputs = {
+        "segmentation": logits[:, :, 0],
+        "reconstruction": batch["volume"],
+        "seg_sequence": logits,
+        "mace_logits": torch.tensor([0.0]),
+    }
+    m = compute_metrics(outputs, batch, num_classes=4, compute_hd95=False, spacing=None)
+    assert "edv_ml" not in m and "esv_ml" not in m
+    assert "edv_vox" in m and "esv_vox" in m
+
+
 def test_chamber_volume_scales_with_spacing():
     mask = torch.ones(1, 4, 4, 4, dtype=torch.long)  # all LV if class 1 — use class 1 fill
     mask = torch.full((1, 4, 4, 4), 1, dtype=torch.long)
