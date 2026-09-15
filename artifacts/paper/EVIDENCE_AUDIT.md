@@ -2,7 +2,7 @@
 
 **Purpose:** One-to-one mapping between manuscript / report numbers and local measured artefacts.  
 **Date:** 2026-09-15  
-**Git HEAD (at audit authoring):** run `git rev-parse HEAD` in repo root (record after commit/push).  
+**Git HEAD (at audit authoring):** 055bd3efeae3435b25b0e40a84e11de4584c2c93  
 **User manuscript:** **Not found** — see `docs/paper/AWAITING_USER_MANUSCRIPT.md`. Interim spine = `docs/paper/MANUSCRIPT_DRAFT.md`.
 
 ---
