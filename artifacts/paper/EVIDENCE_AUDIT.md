@@ -116,7 +116,7 @@ python scripts/build_report_bundle.py
 python -m pytest tests/test_motion.py tests/test_metrics.py tests/test_label_propagation.py -q
 ```
 
-**Test status (this session):** Full `pytest` collection failed on host due to broken `numcodecs` → `LZMA` import (pulled via `zarr` under pytest assertion rewrite). This is an **environment defect**, not evidence that geometry tests were deleted. Prefer re-running after repairing `numcodecs`/`zarr`, or isolating a clean venv. Historical roadmap closure reported **96 passed** under a healthy env (`artifacts/chatgpt_handoff/reports/20260915_full_roadmap_closure.md`).
+**Test status (this session):** Key geometry suites green — `tests/test_motion.py` + `test_metrics.py` + `test_label_propagation.py` → **30 passed** (`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`, `--assert=plain`). Full-suite collection can still hit host `numcodecs`/`zarr` noise; historical roadmap closure reported **96 passed** (`artifacts/chatgpt_handoff/reports/20260915_full_roadmap_closure.md`).
 
 ---
 
