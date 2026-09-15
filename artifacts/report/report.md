@@ -58,9 +58,9 @@ CSTM arXiv:2410.23191 全序列 4D 分割；CineMesh4D 稀疏 cine→4D mesh）�
 ## 4. 思路与方法
 
 - 张量 `(B,C,T,D,H,W)`；默认 `per_frame_recon=true`。
-- MotionNet `(dz,dy,dx)` + Warp L1 + Image-cycle + 可选体积平滑。
+- MotionNet `(dz,dy,dx)` + **L_inv / smooth / Jac / loop / ED-ref**；image-cycle 仅为强度辅助。
 - 分割 LV/RV/MYO；任务头 mace/phenotype/cox；融合 concat 或 heart_ttable（lite）。
-- **图1**（`fig1_pipeline.png`）：流水线示意——稀疏 SA → 逐帧 3D recon → 运动 → 分割/风险；
+- **图1**（`fig1_pipeline.png`）：流水线示意——稀疏 SA → 逐帧 3D recon → 几何运动 → ED/ES 分割；
   HeartTTable-lite 脚注为消融。物理意义：把缺层短轴栈补成可度量 4D 表示。
 
 ## 5. 研究与工程过程（来龙去脉）
@@ -97,12 +97,14 @@ paper_acdc_smoke：PSNR=17.390，phenotype_acc=0.0，phenotype_auc=1.0（小样�
 - **图1 `fig1_pipeline`**：方法角色示意图（非定量）。说明默认数据流与消融脚注。
 - **图2 `fig2_recon_ablation`**：子图 a PSNR、b MAE。对比 broadcast / PF-no-mot / PF+mot。
   回答“运动损失是否进入重建日志”。冒烟数值接近 → **不得**解读为临床增益。真实 ACDC **待补充**。
-- **图3 `fig3_motion_metrics`**：子图 a Warp L1 与 Image-cycle；子图 b EF proxy。
-  证明时间一致性项可训练、可记录。Image-cycle ≠ inverse-consistent flow。
+- **图3 `fig3_motion_metrics`**：子图 a Warp L1 与 Image-cycle（强度代理）；子图 b 来自
+  `outputs/metrics.json` 的 L_inv / L_loop / Jac− ratio。Image-cycle ≠ inverse-consistent flow。
 - **图4 `fig4_seg_dice`**：LV/RV/MYO/Mean Dice 热图。冒烟下 RV≈0 反映欠训练/假标签，非算法上界。
   物理毫米 HD95 **待补充**。
-- **图5 `fig5_claim_boundary`**：主张支持度条形图。公开 recon/seg/运动一致 4D 在范围内；
+- **图5 `fig5_claim_boundary`**：主张支持度条形图。公开 recon/seg/几何运动 4D 在范围内；
   HeartTTable-lite 为部分支持（消融）；私有 AMI 0.934 **out of scope**。
+- **审查文档**：`docs/paper/EVIDENCE_AUDIT.md`（指标↔文件↔代码入口 1:1）。
+- **用户主线稿**：本回合未找到 → `docs/paper/AWAITING_USER_MANUSCRIPT.md`。
 
 ## 7. 讨论
 

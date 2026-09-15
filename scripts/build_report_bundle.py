@@ -118,11 +118,13 @@ def build_report_html(rows: list[dict]) -> str:
     )
     fig3 = figure_block(
         "fig3_motion_metrics.png",
-        "图3 运动一致性与射血分数代理指标",
-        "来龙去脉：Warp L1 度量扭曲后强度与目标帧差异；Image-cycle 是正向/反向扭曲后回到原图的强度误差"
-        "（不是流场坐标逆一致合成）。EF proxy（ejection fraction proxy）由分数体积曲线估计。"
-        "为何引入：原论文强调时空动态，本仓库用可训练运动项把“时间维”落到可审计损失上。"
-        "子图 a/b 均来自 ablations_smoke_v2，属流水线自检。",
+        "图3 运动强度代理与几何损失日志（DEMO）",
+        "来龙去脉：子图 a 来自 ablations_smoke_v2——Warp L1（扭曲后强度误差）与 Image-cycle"
+        "（图像域往返强度残差；明确不等于流场坐标逆一致 L_inv）。"
+        "子图 b 来自 outputs/metrics.json 的几何日志：L_inv（逆一致性）、L_loop（闭合流形组合）、"
+        "Jac− ratio（Jacobian 负体积比 jac_neg_ratio）。"
+        "为何引入：把“运动一致 4D”落到可审计的几何合同，而非仅用强度循环冒充配准逆一致。"
+        "边界：全部为 DEMO 冒烟，不得当临床运动精度。",
     )
     fig4 = figure_block(
         "fig4_seg_dice.png",
@@ -154,7 +156,7 @@ def build_report_html(rows: list[dict]) -> str:
 <section class="cover">
   <h1>几何与运动约束的四维心脏磁共振重建与分割<br/>（ReconSeg3D 方法学扩展）研究汇报</h1>
   <p class="meta">工作区：E:\\Projects\\20260523-ReconSeg3D-cardiac-rec</p>
-  <p class="meta">日期：2026-09-14 · P0 gap closure（ED-ref / fake-data gate / ACDC aug）</p>
+  <p class="meta">日期：2026-09-15 · 几何主线精修（L_inv / Jac / loop / ED-ref）· 用户主线稿未定位见 AWAITING_USER_MANUSCRIPT</p>
   <p class="meta">公开代码（供顾问拉取）：见文末 GitHub URL · 版本：冒烟/演示指标 · 不含私有 AMI 临床结论</p>
 </section>
 
@@ -215,9 +217,12 @@ image-cycle 运动合同”仍缺少透明消融矩阵。</p>
 <tr><td>SSIM</td><td>Structural Similarity（本仓库为全局代理）</td><td>结构相似性</td></tr>
 <tr><td>Dice</td><td>重叠度系数</td><td>分割评价</td></tr>
 <tr><td>HD95</td><td>Hausdorff Distance 95%</td><td>边界误差；物理毫米版待补充</td></tr>
-<tr><td>Warp</td><td>基于位移场的可微重采样</td><td>运动对齐</td></tr>
-<tr><td>Image-cycle</td><td>图像域往返扭曲误差</td><td>时间一致性；≠ 流场逆一致</td></tr>
-<tr><td>EF proxy</td><td>射血分数代理</td><td>由分数体积曲线估计功能</td></tr>
+<tr><td>Warp</td><td>基于位移场的可微重采样（pull-field）</td><td>运动对齐</td></tr>
+<tr><td>L_inv</td><td>真逆一致性 ||u+W(v,u)||+||v+W(u,v)||</td><td>坐标循环；主几何项</td></tr>
+<tr><td>L_smooth / L_jac / L_loop</td><td>光滑 / Jacobian 折叠惩罚 / 相邻闭合流形</td><td>防折叠与周期拓扑</td></tr>
+<tr><td>ED-ref</td><td>以舒张末期为锚的组合路径逆一致</td><td>跨相位一致性</td></tr>
+<tr><td>Image-cycle</td><td>图像域往返扭曲误差</td><td>强度辅助；≠ L_inv</td></tr>
+<tr><td>EF proxy</td><td>射血分数代理（体素标签极值）</td><td>功能曲线流水线检查</td></tr>
 <tr><td>HeartTTable-lite</td><td>单 CLS 对拼接 KV 的注意力融合</td><td>融合消融，非原论文对等实现</td></tr>
 <tr><td>ACDC / MM-WHS / EMIDEC</td><td>公开心脏分割/结构/梗死相关基准</td><td>可公开验证代理</td></tr>
 <tr><td>Cox PH</td><td>Cox Proportional Hazards</td><td>生存风险接口；私有 AMI 前不作主叙事</td></tr>
@@ -269,7 +274,8 @@ image-cycle 运动合同”仍缺少透明消融矩阵。</p>
 <p class="small">paper_recon_smoke：PSNR={recon.get('recon_psnr'):.3f}，Dice mean={recon.get('dice_mean'):.4f}，
 warp={recon.get('warp_error'):.6f}，cycle={recon.get('cycle_error'):.6f}。<br/>
 paper_acdc_smoke：PSNR={acdc.get('recon_psnr'):.3f}，phenotype_acc={acdc.get('phenotype_acc')}，
-phenotype_auc={acdc.get('phenotype_auc')}（小样本不稳定，仅流水线检查）。</p>
+phenotype_auc={acdc.get('phenotype_auc')}（小样本不稳定，仅流水线检查）。<br/>
+几何 DEMO（outputs/metrics.json）：详见 docs/paper/EVIDENCE_AUDIT.md（inv_error / jac_neg_ratio / ssim_3d）。</p>
 {fig2}
 {fig3}
 {fig4}
@@ -313,8 +319,9 @@ warp + image-cycle</strong>，并公开消融与主张边界图。</p>
 <code>artifacts/chatgpt_handoff/reports/</code>。</p>
 
 <hr/>
-<p class="small">插图：scripts/make_paper_figures.py + SciencePlots（字号加大；Times New Roman + SimSun 回退）并 Base64 内嵌。
-配套 Markdown：report.md。英文稿：docs/paper/MANUSCRIPT_DRAFT.md。无外部 CDN。</p>
+<p class="small">插图：scripts/make_paper_figures.py + SciencePlots（Times New Roman + SimSun 回退）并 Base64 内嵌。
+配套 Markdown：report.md。英文稿：docs/paper/MANUSCRIPT_DRAFT.md。真实性审查：docs/paper/EVIDENCE_AUDIT.md。
+用户主线稿检索：docs/paper/AWAITING_USER_MANUSCRIPT.md。无外部 CDN。</p>
 </body>
 </html>
 """
@@ -418,9 +425,9 @@ def build_report_md(rows: list[dict], github_url: str = "") -> str:
         "## 4. 思路与方法",
         "",
         "- 张量 `(B,C,T,D,H,W)`；默认 `per_frame_recon=true`。",
-        "- MotionNet `(dz,dy,dx)` + Warp L1 + Image-cycle + 可选体积平滑。",
+        "- MotionNet `(dz,dy,dx)` + **L_inv / smooth / Jac / loop / ED-ref**；image-cycle 仅为强度辅助。",
         "- 分割 LV/RV/MYO；任务头 mace/phenotype/cox；融合 concat 或 heart_ttable（lite）。",
-        "- **图1**（`fig1_pipeline.png`）：流水线示意——稀疏 SA → 逐帧 3D recon → 运动 → 分割/风险；",
+        "- **图1**（`fig1_pipeline.png`）：流水线示意——稀疏 SA → 逐帧 3D recon → 几何运动 → ED/ES 分割；",
         "  HeartTTable-lite 脚注为消融。物理意义：把缺层短轴栈补成可度量 4D 表示。",
         "",
         "## 5. 研究与工程过程（来龙去脉）",
@@ -468,12 +475,14 @@ def build_report_md(rows: list[dict], github_url: str = "") -> str:
         "- **图1 `fig1_pipeline`**：方法角色示意图（非定量）。说明默认数据流与消融脚注。",
         "- **图2 `fig2_recon_ablation`**：子图 a PSNR、b MAE。对比 broadcast / PF-no-mot / PF+mot。",
         "  回答“运动损失是否进入重建日志”。冒烟数值接近 → **不得**解读为临床增益。真实 ACDC **待补充**。",
-        "- **图3 `fig3_motion_metrics`**：子图 a Warp L1 与 Image-cycle；子图 b EF proxy。",
-        "  证明时间一致性项可训练、可记录。Image-cycle ≠ inverse-consistent flow。",
+        "- **图3 `fig3_motion_metrics`**：子图 a Warp L1 与 Image-cycle（强度代理）；子图 b 来自",
+        "  `outputs/metrics.json` 的 L_inv / L_loop / Jac− ratio。Image-cycle ≠ inverse-consistent flow。",
         "- **图4 `fig4_seg_dice`**：LV/RV/MYO/Mean Dice 热图。冒烟下 RV≈0 反映欠训练/假标签，非算法上界。",
         "  物理毫米 HD95 **待补充**。",
-        "- **图5 `fig5_claim_boundary`**：主张支持度条形图。公开 recon/seg/运动一致 4D 在范围内；",
+        "- **图5 `fig5_claim_boundary`**：主张支持度条形图。公开 recon/seg/几何运动 4D 在范围内；",
         "  HeartTTable-lite 为部分支持（消融）；私有 AMI 0.934 **out of scope**。",
+        "- **审查文档**：`docs/paper/EVIDENCE_AUDIT.md`（指标↔文件↔代码入口 1:1）。",
+        "- **用户主线稿**：本回合未找到 → `docs/paper/AWAITING_USER_MANUSCRIPT.md`。",
         "",
         "## 7. 讨论",
         "",

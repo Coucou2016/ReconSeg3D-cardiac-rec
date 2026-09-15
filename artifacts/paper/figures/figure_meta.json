@@ -1,6 +1,7 @@
 {
-  "source_csv": "outputs\\ablations_smoke_v2\\table.csv",
-  "disclaimer": "All quantitative panels are smoke/demo metrics; prefer ssim_3d / recon_ssim_proxy keys; do not cite as clinical performance.",
+  "source_csv": "outputs/ablations_smoke_v2/table.csv",
+  "geometry_metrics_json": "outputs/metrics.json",
+  "disclaimer": "All quantitative panels are smoke/demo metrics; prefer ssim_3d / recon_ssim_proxy; do not cite as clinical performance.",
   "figures": {
     "fig1": "fig1_pipeline.png",
     "fig2": "fig2_recon_ablation.png",
@@ -8,6 +9,8 @@
     "fig4": "fig4_seg_dice.png",
     "fig5": "fig5_claim_boundary.png"
   },
+  "font": "Times New Roman (+ SimSun/STSong CJK fallback)",
+  "style": "science + nature + no-latex (SciencePlots)",
   "paper_recon_smoke": {
     "run_name": "paper_recon",
     "split": "val",
@@ -23,6 +26,7 @@
     "iou_foreground": 0.02535995382716962,
     "recon_mae": 0.6955792307853699,
     "recon_psnr": 19.027001242233595,
+    "recon_ssim": 4.427475062129815e-06,
     "mace_auc": 0.5,
     "mace_sensitivity": 0.6249999943750001,
     "mace_specificity": 0.0,
@@ -31,9 +35,7 @@
     "ef_proxy": 0.03627409506589174,
     "vol_curve": 3.367517866194248,
     "warp_error": 0.0002938352699857205,
-    "cycle_error": 0.00046422968443948776,
-    "recon_ssim_proxy": 4.427475062129815e-06,
-    "ssim_3d": null
+    "cycle_error": 0.00046422968443948776
   },
   "paper_acdc_smoke": {
     "run_name": "paper_acdc",
@@ -52,6 +54,7 @@
     "hd95_mean": 15.684387141358123,
     "recon_mae": 0.6945934891700745,
     "recon_psnr": 17.389618307590375,
+    "recon_ssim": 1.5963622672643396e-06,
     "mace_auc": 0.0,
     "mace_sensitivity": 0.9999999900000002,
     "mace_specificity": 0.0,
@@ -62,8 +65,18 @@
     "ef_proxy": 0.0,
     "vol_curve": 0.472551167011261,
     "warp_error": 8.574330422561616e-05,
-    "cycle_error": 8.337185136042535e-05,
-    "recon_ssim_proxy": 1.5963622672643396e-06,
-    "ssim_3d": null
+    "cycle_error": 8.337185136042535e-05
+  },
+  "geometry_smoke": {
+    "inv_error": 0.001768695074133575,
+    "loss_inv": 0.001768695074133575,
+    "loss_loop": 0.0017683174228295684,
+    "loss_jac": 0.0,
+    "loss_smooth": 6.127958585011584e-08,
+    "jac_neg_ratio": 0.0,
+    "jac_det_mean": 0.999822199344635,
+    "recon_psnr": 18.795276978088296,
+    "ssim_3d": 0.5148831605911255,
+    "recon_ssim_proxy": 0.009767781011760235
   }
 }
