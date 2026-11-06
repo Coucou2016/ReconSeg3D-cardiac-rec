@@ -1,8 +1,8 @@
 # Geometry- and motion-constrained 4D reconstruction and segmentation from sparse short-axis CMR
 
-**Working manuscript (methods)**  
-**Spine note:** A separate user-revised mainline file was **not located** in this session (`docs/paper/AWAITING_USER_MANUSCRIPT.md`). This draft remains the interim academic spine.  
-**Status:** DEMO-regime quantitative panels only. Licensed subject-level tables: **待补充**.  
+**Working manuscript (methods) — SUPERSEDED**  
+**Canonical submission spine:** `docs/paper/MANUSCRIPT_FINAL.md` and `docs/paper/MANUSCRIPT_FINAL.docx`.  
+**Status:** DEMO-regime quantitative panels only. Licensed subject-level tables are outside the measured set.  
 **Target genre:** Nature-family / methods · English (npj Digit. Med.–adjacent structure, not a clinical MACE claim)  
 **Code:** https://github.com/Coucou2016/ReconSeg3D-cardiac-rec  
 

@@ -1,23 +1,23 @@
 # Evidence authenticity audit
 
-**Purpose:** One-to-one mapping between manuscript / report numbers and local measured artefacts.  
-**Date:** 2026-09-15  
-**Git HEAD (at audit authoring):** 055bd3efeae3435b25b0e40a84e11de4584c2c93  
-**User manuscript:** **Not found** — see `docs/paper/AWAITING_USER_MANUSCRIPT.md`. Interim spine = `docs/paper/MANUSCRIPT_DRAFT.md`.
+**Purpose:** One-to-one mapping between manuscript numbers and local measured artefacts.  
+**Date:** 2026-11-07  
+**Manuscript spine:** `docs/paper/MANUSCRIPT_FINAL.md` → `docs/paper/MANUSCRIPT_FINAL.docx`  
+**Interim draft retained:** `docs/paper/MANUSCRIPT_DRAFT.md`
 
 ---
 
 ## 1. Hard non-claims (never taken from original npj paper)
 
-| Quantity | Original paper (Gao et al., *npj Digit. Med.*) | This repo |
-|----------|-----------------------------------------------|-----------|
-| 5-year time-dependent AUC **0.934** | Private AMI external test | **Not used** |
-| C-index **0.897** | Private AMI | **Not used** |
+| Quantity | Original paper (Gao et al., *npj Digit. Med.*) | This repo / manuscript |
+|----------|-----------------------------------------------|-------------------------|
+| 5-year time-dependent AUC **0.934** | Private AMI external test | **Not used as a result** |
+| C-index **0.897** | Private AMI | **Not used as a result** |
 | Cohort n≈4511 / external n≈1029 | Private | **Not used** |
 | Full HeartTTable three-modality pairwise cross-attn | Clinical product | **Not claimed** (HeartTTable-lite ablation only) |
-| ACDC/MM-WHS “challenge leaderboard” Dice | Training sets for ReconSeg3D in original | **No invented ACDC tables** |
+| ACDC/MM-WHS challenge leaderboard Dice | Original training context | **No invented ACDC clinical tables** |
 
-Any appearance of 0.934 / 0.897 in prose is **boundary language only** (what we refuse to claim).
+Boundary language may mention that private AMI discrimination exists in prior clinical work. Those headline scores are never copied into Results.
 
 ---
 
@@ -25,69 +25,68 @@ Any appearance of 0.934 / 0.897 in prose is **boundary language only** (what we 
 
 | Artefact | Label | How decided |
 |----------|-------|-------------|
-| `outputs/ablations_smoke_v2/table.csv` | **DEMO** | Short smoke on fake/demo NIfTI |
+| `outputs/ablations_smoke_v2/table.csv` | **DEMO** | Short smoke on fake/demo tensors |
 | `outputs/metrics.json` | **DEMO** | Joint eval on demo tensors (geometry keys present) |
 | `outputs/paper_recon_smoke/metrics.json` | **DEMO** | Named paper smoke run |
 | `outputs/paper_acdc_smoke/metrics.json` | **DEMO** | Local ACDC-**named** placeholder tree, not CREATIS |
-| `outputs/post_fix_smoke/metrics.json` | **DEMO** | Pre-geometry-key logging era (legacy) |
+| `outputs/post_fix_smoke/metrics.json` | **DEMO** | Legacy pre-geometry-key logging era |
 | `data/acdc/`, `data/mmwhs/`, `data/emidec/` | **DEMO placeholders** | Tiny synthetic volumes |
-| Licensed ACDC subject CV tables | **待补充** | No licensed mount |
+| Licensed ACDC subject CV tables | **Absent from measured set** | No licensed mount |
 | Private AMI MACE | **Out of scope** | No data |
 
 ---
 
-## 3. Numbers in manuscript §5 → source files → code entry points
+## 3. Numbers in MANUSCRIPT_FINAL → source files → code
 
-### 3.1 Ablation table (PSNR / MAE / Dice mean)
+### 3.1 Ablation table (PSNR / MAE / Dice mean) — Results §5.1 / Table 2 / Fig. 2
 
-| MS cell | Source | Computing path |
-|---------|--------|----------------|
-| broadcast / PF±motion / fusion rows | `outputs/ablations_smoke_v2/table.csv` | `scripts/run_ablations.py` → `scripts/train.py` / eval loop → `reconseg3d` metrics |
-| Fig. 2 bars | same CSV via `scripts/make_paper_figures.py` | `fig2_recon_ablation` |
-| Fig. 4 heatmap | same CSV | `fig4_seg_dice` |
+| MS cell (rounded) | Exact source | Computing path |
+|-------------------|--------------|----------------|
+| broadcast_baseline 19.08 / 0.693 / 0.168 | PSNR=19.075101, MAE=0.692593, dice_mean=0.168156 | `scripts/run_ablations.py` → train/eval → metrics |
+| per_frame_no_motion 19.15 / 0.692 / 0.170 | 19.150563 / 0.691882 / 0.169577 | same |
+| per_frame_motion 19.15 / 0.695 / 0.159 | 19.147806 / 0.695264 / 0.158844 | same |
+| fusion_concat 19.09 / 0.692 / 0.139 | 19.092749 / 0.692152 / 0.139436 | same |
+| fusion_heart_ttable 19.26 / 0.689 / 0.189 | 19.260390 / 0.689495 / 0.189020 | same |
+| Myocardium Dice 0.567 (HeartTTable-lite) | `dice_myo` in same CSV | same |
+| Fig. 2 / Fig. 4 | `scripts/make_paper_figures.py` | reads same CSV |
 
-Exact CSV values (rounded in MS):
+File: `outputs/ablations_smoke_v2/table.csv`
 
-```
-broadcast_baseline: PSNR=19.075, MAE=0.6926, dice_mean=0.1682
-per_frame_no_motion: PSNR=19.151, MAE=0.6919, dice_mean=0.1696
-per_frame_motion: PSNR=19.148, MAE=0.6953, dice_mean=0.1588
-fusion_concat: PSNR=19.093, MAE=0.6922, dice_mean=0.1394
-fusion_heart_ttable: PSNR=19.260, MAE=0.6895, dice_mean=0.1890
-```
-
-### 3.2 Geometry logs (`inv_error`, Jac, loop, SSIM)
+### 3.2 Geometry logs — Results §5.2 / Table 3 / Fig. 3
 
 | MS metric | Source key | File | Code |
 |-----------|------------|------|------|
-| \(L_\mathrm{inv}\) | `inv_error` / `loss_inv` | `outputs/metrics.json` | `reconseg3d/models/motion.py::inverse_consistency_loss` composed in `reconseg3d/models/losses.py` |
-| \(L_\mathrm{loop}\) | `loss_loop` | same | `motion.py` loop helpers + `losses.py` (`w_loop`) |
-| \(L_\mathrm{smooth}\) | `loss_smooth` | same | `motion.py::smoothness_loss` |
-| \(L_\mathrm{jac}\) / `jac_neg_ratio` | `loss_jac`, `jac_neg_ratio`, `jac_det_*` | same | `motion.py::folding_penalty`, `jacobian_stats` |
-| Image-cycle | `cycle_error` / `loss_cycle` | same | intensity cycle aux in `motion.py` / `losses.py` (**≠** \(L_\mathrm{inv}\)) |
-| `ssim_3d` | `ssim_3d` | same | metrics module (windowed) |
-| `recon_ssim_proxy` | `recon_ssim_proxy` | same | global proxy; **not** aliased as `recon_ssim` in publication path |
-| Fig. 3b | same JSON | `make_paper_figures.py::fig3_motion_metrics` |
+| Inverse-consistency 0.00177 | `inv_error` / `loss_inv` = 0.001768695 | `outputs/metrics.json` | `reconseg3d/models/motion.py::inverse_consistency_loss` |
+| Cycle composition 0.00177 | `loss_loop` = 0.001768317 | same | `loop_consistency_loss` |
+| Smoothness 6.1e-8 | `loss_smooth` = 6.127958585e-8 | same | `smoothness_loss` |
+| Folding penalty 0.0 | `loss_jac` = 0.0 | same | `folding_penalty` |
+| Neg Jac ratio 0.0 | `jac_neg_ratio` | same | `jacobian_stats` |
+| Mean Jac det 0.9998 | `jac_det_mean` = 0.999822199 | same | `jacobian_stats` |
+| Image-cycle 2.3e-5 | `cycle_error` = 2.339757e-5 | same | intensity cycle aux (**≠** \(L_\mathrm{inv}\)) |
+| PSNR 18.80 | `recon_psnr` = 18.795277 | same | recon metrics |
+| `ssim_3d` 0.515 | `ssim_3d` = 0.514883 | same | windowed SSIM |
+| `recon_ssim_proxy` 0.0098 | `recon_ssim_proxy` = 0.009767781 | same | global proxy |
+| ED↔ES prop Dice 1.0 | `prop_ed2es_dice_mean`, `prop_es2ed_dice_mean` | same | label propagation API |
 
-Recorded DEMO values (from `outputs/metrics.json` at audit time):
+### 3.3 Named checkpoints — Results §5.4 / Table 4
 
-```
-inv_error=0.0017687, loss_loop=0.0017683, loss_smooth≈6.13e-8,
-loss_jac=0.0, jac_neg_ratio=0.0, jac_det_mean=0.99982,
-cycle_error=2.34e-5, recon_psnr=18.795, ssim_3d=0.5149,
-recon_ssim_proxy=0.00977
-```
-
-### 3.3 Pipeline checkpoints
-
-| MS row | File | Notes |
-|--------|------|-------|
-| paper_recon_smoke | `outputs/paper_recon_smoke/metrics.json` | PSNR≈19.027, dice_mean≈0.0480 |
-| paper_acdc_smoke | `outputs/paper_acdc_smoke/metrics.json` | PSNR≈17.390; **placeholder ACDC tree** |
+| MS row | File | Exact keys |
+|--------|------|------------|
+| paper_recon_smoke | `outputs/paper_recon_smoke/metrics.json` | PSNR=19.027001, dice_mean=0.0480199, warp_error=0.000293835, cycle_error=0.000464230 |
+| paper_acdc_smoke | `outputs/paper_acdc_smoke/metrics.json` | PSNR=17.389618, dice_mean=0.0175126, warp_error=8.57433e-5, cycle_error=8.33719e-5, hd95_lv=15.684387 |
 
 Eval entry: `scripts/eval.py`.
 
-### 3.4 Figures
+### 3.4 Supplementary ablation spreads — Results §5.5
+
+Derived from the same CSV (no new invention):
+
+- PSNR span 19.075–19.260 → 0.18 dB
+- MAE span 0.6895–0.6953
+- Dice mean span 0.1394–0.1890
+- Synthetic `mace_auc`/`c_index` fields (e.g. 0.625 / 0.5556) logged on some arms → manuscript states pipeline-only, excluded from clinical claim
+
+### 3.5 Figures
 
 | Figure | Generator | Data |
 |--------|-----------|------|
@@ -95,28 +94,38 @@ Eval entry: `scripts/eval.py`.
 | Fig. 2–4 | same | `ablations_smoke_v2/table.csv` (+ Fig. 3b geometry JSON) |
 | Fig. 5 claim boundary | same | Qualitative ledger |
 | Outputs | `artifacts/paper/figures/*.{png,pdf,svg}` | SciencePlots `science`+`nature`+`no-latex`; Times New Roman |
+| Meta | `artifacts/paper/figures/figure_meta.json` | |
 
-Meta: `artifacts/paper/figures/figure_meta.json`.
+### 3.6 Methods ↔ code correspondence
+
+| Manuscript statement | Code symbol |
+|----------------------|-------------|
+| Pull compose \(u\circ v=v+W(u,v)\) | `compose_pull` |
+| True \(L_\mathrm{inv}\) | `inverse_consistency_loss` |
+| Smoothness | `smoothness_loss` |
+| Jacobian folding | `folding_penalty`, `jacobian_determinant` |
+| Periodic composition with return step | `loop_consistency_loss` (T pairs, last closes) |
+| ED-anchored composed path | `ed_reference_consistency_loss`, `ed_anchored_paths` |
+| Loss weights | `reconseg3d/models/losses.py` (`w_inv`, `w_smooth`, `w_jac`, `w_loop`, `w_ed_ref`) |
 
 ---
 
 ## 4. Commands used / expected for regeneration
 
 ```text
-# Figures (SciencePlots already installed: SciencePlots 2.2.2)
 python scripts/make_paper_figures.py
-
-# Self-contained report + manuscript HTML/PDF
-python scripts/build_report_bundle.py
-
-# Ablations (DEMO; long) — do not invent rows if skipped
-# python scripts/run_ablations.py ...
-
-# Unit tests (geometry)
-python -m pytest tests/test_motion.py tests/test_metrics.py tests/test_label_propagation.py -q
+python scripts/build_manuscript_docx.py
+python -m pytest tests/test_motion.py tests/test_metrics.py tests/test_label_propagation.py -q --assert=plain
+# with PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 on hosts with plugin noise
 ```
 
-**Test status (this session):** Key geometry suites green — `tests/test_motion.py` + `test_metrics.py` + `test_label_propagation.py` → **30 passed** (`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`, `--assert=plain`). Full-suite collection can still hit host `numcodecs`/`zarr` noise; historical roadmap closure reported **96 passed** (`artifacts/chatgpt_handoff/reports/20260915_full_roadmap_closure.md`).
+**OA reference PDFs downloaded (structure imitation only, not copied text):**
+
+- `artifacts/paper/references/voxelmorph_balakrishnan2019.pdf`
+- `artifacts/paper/references/krebs2020_latent_motion_matrix.pdf`
+- `artifacts/paper/references/deeptag_ye2021.pdf`
+- `artifacts/paper/references/groupwise_dynamic_mri_frontiers2022.pdf`
+- `artifacts/paper/references/dalca2019_diffeomorphic.pdf`
 
 ---
 
@@ -124,17 +133,18 @@ python -m pytest tests/test_motion.py tests/test_metrics.py tests/test_label_pro
 
 | Deliverable | Paths | Rules |
 |-------------|-------|-------|
-| Academic paper | `docs/paper/MANUSCRIPT_DRAFT.md`, `docs/paper/manuscript.html`, `artifacts/paper/*` | No `E:\` paths; DEMO labels; no session/rebuttal tone |
-| Process report | `artifacts/report/report.{html,md,pdf}` | Full 来龙去脉, workspace paths, dual-agent notes OK |
-| This audit | `docs/paper/EVIDENCE_AUDIT.md` (+ copy under `artifacts/paper/` if synced) | Authenticity ledger |
+| Academic paper | `docs/paper/MANUSCRIPT_FINAL.md`, `MANUSCRIPT_FINAL.docx`, figures under `artifacts/paper/figures/` | No local Windows paths; DEMO labels; no session tone |
+| Process report | `artifacts/report/*` | Workspace paths OK |
+| This audit | `docs/paper/EVIDENCE_AUDIT.md` | Authenticity ledger with paths |
 
 ---
 
 ## 6. Sync checklist
 
-- [x] MS tables cite only DEMO sources listed above  
-- [x] Figs regenerated from same CSV/JSON  
-- [x] Original 0.934 / 0.897 excluded from results  
-- [ ] User mainline manuscript path provided → re-align section order  
-- [ ] Licensed ACDC subject tables  
-- [ ] Full pytest green on clean env  
+- [x] MS tables cite only DEMO sources listed above
+- [x] Figs regenerable from same CSV/JSON
+- [x] Original 0.934 / 0.897 excluded from Results
+- [x] No “待补充/待确定” wording in manuscript body (rewritten as measured-scope language)
+- [x] Word manuscript built via `scripts/build_manuscript_docx.py`
+- [ ] Licensed ACDC subject tables (blocker: no licensed mount)
+- [ ] Full pytest green on clean env (host `numcodecs`/`zarr` noise possible)
