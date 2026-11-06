@@ -3,6 +3,7 @@
 **Purpose:** One-to-one mapping between manuscript numbers and local measured artefacts.  
 **Date:** 2026-11-07  
 **Manuscript spine:** `docs/paper/MANUSCRIPT_FINAL.md` → `docs/paper/MANUSCRIPT_FINAL.docx`  
+**Word deliverable:** `docs/paper/MANUSCRIPT_FINAL.docx` (built 2026-11-07 via `scripts/build_manuscript_docx.py`; openable; 5 SciencePlots PNGs from `artifacts/paper/figures/` embedded; DEMO metrics only — no 0.934/0.897)  
 **Interim draft retained:** `docs/paper/MANUSCRIPT_DRAFT.md`
 
 ---
@@ -145,6 +146,6 @@ python -m pytest tests/test_motion.py tests/test_metrics.py tests/test_label_pro
 - [x] Figs regenerable from same CSV/JSON
 - [x] Original 0.934 / 0.897 excluded from Results
 - [x] No “待补充/待确定” wording in manuscript body (rewritten as measured-scope language)
-- [x] Word manuscript built via `scripts/build_manuscript_docx.py`
+- [x] Word manuscript built via `scripts/build_manuscript_docx.py` → `docs/paper/MANUSCRIPT_FINAL.docx` (verified openable, 5 figures embedded)
 - [ ] Licensed ACDC subject tables (blocker: no licensed mount)
 - [ ] Full pytest green on clean env (host `numcodecs`/`zarr` noise possible)
