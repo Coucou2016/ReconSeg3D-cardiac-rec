@@ -1,14 +1,18 @@
-# Evidence authenticity audit
+# Evidence authenticity audit / 证据真实性审计
 
-**Purpose:** One-to-one mapping between manuscript numbers and local measured artefacts.  
-**Date:** 2026-11-07  
-**Manuscript spine:** `docs/paper/MANUSCRIPT_FINAL.md` → `docs/paper/MANUSCRIPT_FINAL.docx`  
-**Word deliverable:** `docs/paper/MANUSCRIPT_FINAL.docx` (built 2026-11-07 via `scripts/build_manuscript_docx.py`; openable; 5 SciencePlots PNGs from `artifacts/paper/figures/` embedded; DEMO metrics only — no 0.934/0.897)  
-**Interim draft retained:** `docs/paper/MANUSCRIPT_DRAFT.md`
+**Purpose / 目的:** One-to-one mapping between manuscript numbers and local measured artefacts.  
+文稿数字与本地实测产物的一一对应。
+
+**Date / 日期:** 2026-11-07  
+
+**Manuscript spines / 文稿脊柱:**
+- English: `docs/paper/MANUSCRIPT_FINAL.md` → `docs/paper/MANUSCRIPT_FINAL.docx`
+- Chinese (primary deliverable this pass): `docs/paper/MANUSCRIPT_FINAL_ZH.md` → `docs/paper/MANUSCRIPT_FINAL_ZH.docx`  
+  Built via `scripts/build_manuscript_docx_zh.py` with heading-based **目录** (static TOC + Word TOC field). Five SciencePlots PNGs from `artifacts/paper/figures/` embedded. DEMO metrics only — no 0.934 / 0.897.
 
 ---
 
-## 1. Hard non-claims (never taken from original npj paper)
+## 1. Hard non-claims / 硬性不主张（never from original npj private AMI）
 
 | Quantity | Original paper (Gao et al., *npj Digit. Med.*) | This repo / manuscript |
 |----------|-----------------------------------------------|-------------------------|
@@ -22,7 +26,7 @@ Boundary language may mention that private AMI discrimination exists in prior cl
 
 ---
 
-## 2. DEMO vs real labels
+## 2. DEMO vs real labels / 演示与真实标签
 
 | Artefact | Label | How decided |
 |----------|-------|-------------|
@@ -37,7 +41,7 @@ Boundary language may mention that private AMI discrimination exists in prior cl
 
 ---
 
-## 3. Numbers in MANUSCRIPT_FINAL → source files → code
+## 3. Numbers in MANUSCRIPT_FINAL(_ZH) → source files → code
 
 ### 3.1 Ablation table (PSNR / MAE / Dice mean) — Results §5.1 / Table 2 / Fig. 2
 
@@ -63,7 +67,7 @@ File: `outputs/ablations_smoke_v2/table.csv`
 | Folding penalty 0.0 | `loss_jac` = 0.0 | same | `folding_penalty` |
 | Neg Jac ratio 0.0 | `jac_neg_ratio` | same | `jacobian_stats` |
 | Mean Jac det 0.9998 | `jac_det_mean` = 0.999822199 | same | `jacobian_stats` |
-| Image-cycle 2.3e-5 | `cycle_error` = 2.339757e-5 | same | intensity cycle aux (**≠** \(L_\mathrm{inv}\)) |
+| Image-cycle 2.3e-5 | `cycle_error` = 2.339757e-5 | same | intensity cycle aux (not \(L_\mathrm{inv}\)) |
 | PSNR 18.80 | `recon_psnr` = 18.795277 | same | recon metrics |
 | `ssim_3d` 0.515 | `ssim_3d` = 0.514883 | same | windowed SSIM |
 | `recon_ssim_proxy` 0.0098 | `recon_ssim_proxy` = 0.009767781 | same | global proxy |
@@ -105,47 +109,55 @@ Derived from the same CSV (no new invention):
 | True \(L_\mathrm{inv}\) | `inverse_consistency_loss` |
 | Smoothness | `smoothness_loss` |
 | Jacobian folding | `folding_penalty`, `jacobian_determinant` |
-| Periodic composition with return step | `loop_consistency_loss` (T pairs, last closes) |
+| Periodic composition with return step T-1→0 | `loop_consistency_loss` (T pairs, last closes) |
 | ED-anchored composed path | `ed_reference_consistency_loss`, `ed_anchored_paths` |
+| Linear ED paths strip closing edge | `adjacent_flow_stack` |
 | Loss weights | `reconseg3d/models/losses.py` (`w_inv`, `w_smooth`, `w_jac`, `w_loop`, `w_ed_ref`) |
+| ED/ES labeled-phase seg | `labeled_phase_seg_loss` |
+| Publication gates (MACE/Cox zero) | publication YAML + `w_mace`/`w_cox` defaults |
 
 ---
 
-## 4. Commands used / expected for regeneration
+## 4. Commands / 再生命令
 
 ```text
 python scripts/make_paper_figures.py
 python scripts/build_manuscript_docx.py
+python scripts/build_manuscript_docx_zh.py
 python -m pytest tests/test_motion.py tests/test_metrics.py tests/test_label_propagation.py -q --assert=plain
 # with PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 on hosts with plugin noise
 ```
 
-**OA reference PDFs downloaded (structure imitation only, not copied text):**
+**OA reference PDFs (structure imitation only / 仅结构仿写，不抄正文):**
 
-- `artifacts/paper/references/voxelmorph_balakrishnan2019.pdf`
-- `artifacts/paper/references/krebs2020_latent_motion_matrix.pdf`
-- `artifacts/paper/references/deeptag_ye2021.pdf`
-- `artifacts/paper/references/groupwise_dynamic_mri_frontiers2022.pdf`
-- `artifacts/paper/references/dalca2019_diffeomorphic.pdf`
+- `artifacts/paper/references/voxelmorph_balakrishnan2019.pdf` (TMI OA-style / IEEE)
+- `artifacts/paper/references/krebs2020_latent_motion_matrix.pdf` (TMI)
+- `artifacts/paper/references/deeptag_ye2021.pdf` (CVPR)
+- `artifacts/paper/references/groupwise_dynamic_mri_frontiers2022.pdf` (Frontiers OA)
+- `artifacts/paper/references/dalca2019_diffeomorphic.pdf` (MedIA)
 
 ---
 
-## 5. Paper vs report separation
+## 5. Paper vs report separation / 论文与过程报告分离
 
 | Deliverable | Paths | Rules |
 |-------------|-------|-------|
-| Academic paper | `docs/paper/MANUSCRIPT_FINAL.md`, `MANUSCRIPT_FINAL.docx`, figures under `artifacts/paper/figures/` | No local Windows paths; DEMO labels; no session tone |
+| Academic paper (ZH primary) | `docs/paper/MANUSCRIPT_FINAL_ZH.md`, `MANUSCRIPT_FINAL_ZH.docx` | No local Windows paths; DEMO labels; no session tone |
+| Academic paper (EN) | `docs/paper/MANUSCRIPT_FINAL.md`, `MANUSCRIPT_FINAL.docx` | same |
 | Process report | `artifacts/report/*` | Workspace paths OK |
 | This audit | `docs/paper/EVIDENCE_AUDIT.md` | Authenticity ledger with paths |
 
+中文镜像说明亦见 `docs/paper/EVIDENCE_AUDIT_ZH.md`（若存在则与本文件同步）。
+
 ---
 
-## 6. Sync checklist
+## 6. Sync checklist / 同步清单
 
 - [x] MS tables cite only DEMO sources listed above
 - [x] Figs regenerable from same CSV/JSON
 - [x] Original 0.934 / 0.897 excluded from Results
-- [x] No “待补充/待确定” wording in manuscript body (rewritten as measured-scope language)
-- [x] Word manuscript built via `scripts/build_manuscript_docx.py` → `docs/paper/MANUSCRIPT_FINAL.docx` (verified openable, 5 figures embedded)
+- [x] No “待补充/待确定/待确认” wording in manuscript body
+- [x] Chinese Word built with 目录 (static + TOC field)
+- [x] Five figures embedded
 - [ ] Licensed ACDC subject tables (blocker: no licensed mount)
 - [ ] Full pytest green on clean env (host `numcodecs`/`zarr` noise possible)
